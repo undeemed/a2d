@@ -1,0 +1,22 @@
+[package]
+name = "a2d-cli"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[[bin]]
+name = "a2d"
+path = "src/main.rs"
+
+[dependencies]
+a2d-run = { path = "../a2d-run" }
+a2d-contracts = { path = "../a2d-contracts" }
+clap = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

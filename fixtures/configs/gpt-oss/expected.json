@@ -1,0 +1,1 @@
+{ "verdict": "unsupported", "reasons": ["attn.swa", "attn.sink", "weights.mxfp4"], "weights": "missing" }

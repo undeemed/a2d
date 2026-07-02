@@ -1,0 +1,15 @@
+[package]
+name = "a2d-run"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+a2d-contracts = { path = "../a2d-contracts" }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[lints]
+workspace = true

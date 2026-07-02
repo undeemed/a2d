@@ -1,0 +1,13 @@
+/target
+.venv
+__pycache__/
+*.pyc
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+/runs
+.env*
+.lavish/
+.session-id
+dist/
+*.egg-info/

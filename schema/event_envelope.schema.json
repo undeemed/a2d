@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EventEnvelope",
+  "description": "One line of the worker's stdout JSONL event stream (mirrored to\n`events.jsonl`).",
+  "type": "object",
+  "properties": {
+    "event": {
+      "$ref": "#/$defs/Event"
+    },
+    "job_id": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "seq": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "ts": {
+      "description": "RFC3339 timestamp.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "job_id",
+    "seq",
+    "ts",
+    "event"
+  ],
+  "$defs": {
+    "Event": {
+      "description": "Worker event payload. Internally tagged so each line is a flat object:\n`{\"type\":\"log\",\"level\":\"info\",\"message\":\"...\"}`.",
+      "oneOf": [
+        {
+          "title": "JobStarted",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "job_started"
+            },
+            "worker": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "worker"
+          ]
+        },
+        {
+          "title": "Log",
+          "type": "object",
+          "properties": {
+            "level": {
+              "$ref": "#/$defs/LogLevel"
+            },
+            "message": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "log"
+            }
+          },
+          "required": [
+            "type",
+            "level",
+            "message"
+          ]
+        },
+        {
+          "title": "JobCompleted",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "job_completed"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "title": "JobFailed",
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "job_failed"
+            }
+          },
+          "required": [
+            "type",
+            "message"
+          ]
+        }
+      ]
+    },
+    "LogLevel": {
+      "type": "string",
+      "enum": [
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ]
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConversionJob",
+  "description": "Job sent to the worker on stdin.",
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "type": "string"
+    },
+    "model_path": {
+      "type": "string"
+    },
+    "run_dir": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "job_id",
+    "model_path",
+    "run_dir"
+  ]
+}

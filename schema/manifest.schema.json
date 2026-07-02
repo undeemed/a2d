@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Manifest",
+  "description": "Run provenance written to `<run-dir>/manifest.json`.",
+  "type": "object",
+  "properties": {
+    "a2d_version": {
+      "type": "string"
+    },
+    "created_at": {
+      "description": "RFC3339 timestamp.",
+      "type": "string"
+    },
+    "finished_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "job_id": {
+      "type": "string"
+    },
+    "model_path": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/RunStatus"
+    }
+  },
+  "required": [
+    "schema_version",
+    "a2d_version",
+    "job_id",
+    "created_at",
+    "model_path",
+    "status"
+  ],
+  "$defs": {
+    "RunStatus": {
+      "type": "string",
+      "enum": [
+        "running",
+        "completed",
+        "failed"
+      ]
+    }
+  }
+}

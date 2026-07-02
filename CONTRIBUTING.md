@@ -1,0 +1,49 @@
+# Contributing to a2d
+
+Thanks for your interest. This page is the short version: how to build, test, lint, and regenerate code.
+
+## Prerequisites
+
+- [rustup](https://rustup.rs/) - the Rust toolchain is pinned by `rust-toolchain.toml` (stable + rustfmt + clippy).
+- [uv](https://docs.astral.sh/uv/) - manages the Python workspace and its single `uv.lock`.
+
+## The four commands
+
+```sh
+# build
+cargo build --workspace
+
+# test
+cargo test --workspace
+uv run pytest
+
+# lint
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy
+
+# codegen (regenerate boundary types)
+bash scripts/codegen.sh
+```
+
+## Boundary types are generated
+
+The Rust ↔ Python boundary types are the single source of truth and are generated - do not hand-edit the
+Python contract models.
+
+To change a boundary type:
+
+1. Edit the Rust types in `crates/a2d-contracts`.
+2. Run `bash scripts/codegen.sh`. This exports JSON Schema to `schema/` and regenerates the pydantic models
+   in `packages/a2d-contracts`.
+3. Commit `crates/`, `schema/`, and `packages/a2d-contracts` together so they never drift. CI runs codegen
+   and fails on any diff.
+
+## The contribution / extension model
+
+Read [`docs/SPEC-HANDOFF.md` section 3.3](docs/SPEC-HANDOFF.md) first. It is THE model for how a2d grows:
+supporting a new model, attention variant, objective, weights format, or eval task each maps to exactly one
+extension point you add a file to - never existing code you edit. Registries, not switch statements. If your
+change requires editing an existing module to route to new behavior, it is in the wrong place.

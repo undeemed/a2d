@@ -52,12 +52,86 @@ fn convert_no_op_writes_well_formed_run_dir() {
     );
 }
 
+/// Path to a corpus fixture dir, relative to this crate's manifest dir.
+fn fixture(name: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/configs")
+        .join(name)
+}
+
 #[test]
-fn detect_subcommand_is_stubbed_with_exit_2() {
+fn detect_supported_fixture_exits_0() {
     let output = Command::new(env!("CARGO_BIN_EXE_a2d"))
         .arg("detect")
-        .arg("x")
+        .arg(fixture("gpt2"))
         .output()
         .expect("spawn a2d");
-    assert_eq!(output.status.code(), Some(2), "`a2d detect` should exit 2");
+    assert_eq!(output.status.code(), Some(0), "gpt2 is supported -> exit 0");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("SUPPORTED"),
+        "stdout should say SUPPORTED: {stdout}"
+    );
+}
+
+#[test]
+fn detect_unsupported_fixture_exits_1_with_reason() {
+    let output = Command::new(env!("CARGO_BIN_EXE_a2d"))
+        .arg("detect")
+        .arg(fixture("mamba"))
+        .output()
+        .expect("spawn a2d");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "mamba is unsupported -> exit 1"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("UNSUPPORTED") && stdout.contains("paradigm.ssm"),
+        "stdout should reject with paradigm.ssm: {stdout}"
+    );
+}
+
+#[test]
+fn detect_config_only_dir_exits_0_with_download_hint() {
+    let dir = tempfile::tempdir().expect("create config-only tempdir");
+    std::fs::copy(
+        fixture("gpt2").join("config.json"),
+        dir.path().join("config.json"),
+    )
+    .expect("copy config.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_a2d"))
+        .arg("detect")
+        .arg(dir.path())
+        .output()
+        .expect("spawn a2d");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "config-only supported -> exit 0"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("hf download"),
+        "stderr should carry the hf download hint: {stderr}"
+    );
+}
+
+#[test]
+fn detect_missing_config_exits_2() {
+    let dir = tempfile::tempdir().expect("create empty tempdir");
+    let output = Command::new(env!("CARGO_BIN_EXE_a2d"))
+        .arg("detect")
+        .arg(dir.path())
+        .output()
+        .expect("spawn a2d");
+    // run() intercepts the bad-input Err itself -> exit 2, not main's generic FAILURE (1).
+    assert_eq!(output.status.code(), Some(2), "no config.json -> exit 2");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("error:"),
+        "stderr should carry an error: {stderr}"
+    );
 }

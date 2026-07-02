@@ -4,6 +4,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 mod convert;
+mod detect;
 mod runs;
 
 /// a2d - convert local autoregressive LLMs into diffusion language models.
@@ -35,8 +36,11 @@ enum Command {
     },
     /// Detect and gate a model from its config (Phase 1).
     Detect {
-        #[allow(dead_code)]
+        /// Local model directory (must contain a config.json).
         path: PathBuf,
+        /// Emit the full DetectReport as JSON instead of the human render.
+        #[arg(long)]
+        json: bool,
     },
     /// Resume a conversion run (Phase 2).
     Resume {
@@ -82,7 +86,13 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        Command::Detect { .. } => stub("detect"),
+        Command::Detect { path, json } => match detect::run(&path, json) {
+            Ok(code) => code,
+            Err(e) => {
+                eprintln!("error: {e:#}");
+                ExitCode::FAILURE
+            }
+        },
         Command::Resume { .. } => stub("resume"),
         Command::Eval { .. } => stub("eval"),
         Command::Sample { .. } => stub("sample"),

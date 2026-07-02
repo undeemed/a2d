@@ -1,8 +1,12 @@
 //! EXTENSION POINT contract.
 //!
-//! One file per quirky `model_type`. Each self-registers via
-//! `inventory::submit!`. Adding a model = dropping a new file here; never edit
-//! existing files (open-closed, SPEC-HANDOFF section 3.3).
-//!
-//! Phase 0 is empty on purpose - it only proves the registry seam links.
-//! Phase 1 fills this directory with real adapters.
+//! One file per quirky `model_type`. Each self-registers via `inventory::submit!`.
+//! Adding a model = dropping a new file here and adding one `mod` line below (the
+//! sole sanctioned edit to this table); never edit an existing adapter file
+//! (open-closed, SPEC-HANDOFF section 3.3).
+
+mod gpt2;
+mod gpt_oss;
+mod llama;
+mod olmoe;
+mod qwen2;

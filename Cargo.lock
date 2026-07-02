@@ -7,6 +7,7 @@ name = "a2d-cli"
 version = "0.1.0"
 dependencies = [
  "a2d-contracts",
+ "a2d-detect",
  "a2d-run",
  "anyhow",
  "clap",
@@ -27,7 +28,11 @@ dependencies = [
 name = "a2d-detect"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "inventory",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

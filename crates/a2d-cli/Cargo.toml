@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 a2d-run = { path = "../a2d-run" }
 a2d-contracts = { path = "../a2d-contracts" }
+a2d-detect = { path = "../a2d-detect" }
 clap = { workspace = true }
 anyhow = { workspace = true }
 serde_json = { workspace = true }

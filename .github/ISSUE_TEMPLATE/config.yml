@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Design docs
+    url: https://github.com/undeemed/a2d/tree/main/docs
+    about: The spec, architecture, and roadmap. Check here before filing feature requests.

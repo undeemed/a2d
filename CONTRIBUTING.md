@@ -47,3 +47,18 @@ Read [`docs/SPEC-HANDOFF.md` section 3.3](docs/SPEC-HANDOFF.md) first. It is THE
 supporting a new model, attention variant, objective, weights format, or eval task each maps to exactly one
 extension point you add a file to - never existing code you edit. Registries, not switch statements. If your
 change requires editing an existing module to route to new behavior, it is in the wrong place.
+
+## Pull requests
+
+- Keep PRs focused: one change per PR.
+  Extension-point additions (an adapter, a handler, an objective) are the ideal shape - one new file, one fixture or test.
+- Run the four commands above before pushing; CI runs exactly the same gates and must be green.
+- New non-trivial logic needs a test.
+  Fixture-driven where possible: a new adapter means a new `fixtures/configs/` entry, which puts it in the parameterized gate matrix automatically.
+- PRs are squash-merged, so the PR title becomes the commit message - write it like one.
+
+## Finding work
+
+Check the [roadmap](docs/SPEC-HANDOFF.md) for the current phase and the
+[issue tracker](https://github.com/undeemed/a2d/issues) - issues labeled `good first issue` are scoped to a
+single extension point or file.

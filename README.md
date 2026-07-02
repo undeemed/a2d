@@ -1,8 +1,14 @@
 # a2d
 
+[![CI](https://github.com/undeemed/a2d/actions/workflows/ci.yml/badge.svg)](https://github.com/undeemed/a2d/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **Convert open-weight autoregressive LLMs into diffusion language models. Locally, with one command.**
 
-> **Status: design phase.** The spec and architecture are public (see [Design docs](#design-docs)); code lands per the [roadmap](#roadmap). Nothing below is runnable yet.
+> **Status: Phase 0 (walking skeleton) landed.**
+> The CLI, contracts codegen, worker protocol, and run directories exist and run end to end as a no-op pipeline.
+> The actual conversion recipe lands in Phase 2 of the [roadmap](#roadmap); nothing converts a real model yet.
+> Contributions welcome - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

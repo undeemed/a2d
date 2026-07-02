@@ -1,0 +1,38 @@
+name: Bug report
+description: Something broke or behaved wrongly
+labels: [bug]
+body:
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The exact a2d command you ran.
+      placeholder: a2d convert ./models/qwen2-0.5b --out runs/demo
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Paste output, error messages, or the tail of `events.jsonl` from the run dir.
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model (if applicable)
+      description: HF repo id or architecture of the model involved.
+      placeholder: Qwen/Qwen2-0.5B
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, a2d version/commit, rustc and Python versions.
+    validations:
+      required: true

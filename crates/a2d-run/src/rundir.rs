@@ -6,6 +6,7 @@ use std::path::Path;
 use a2d_contracts::{Manifest, RunStatus};
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
+use sha2::{Digest, Sha256};
 
 /// Create the run directory, refusing to clobber existing work.
 ///
@@ -36,15 +37,45 @@ pub fn write_manifest(run_dir: &Path, manifest: &Manifest) -> Result<()> {
     Ok(())
 }
 
+/// Read `<run_dir>/manifest.json` back into a [`Manifest`].
+pub fn read_manifest(run_dir: &Path) -> Result<Manifest> {
+    let path = run_dir.join("manifest.json");
+    let data = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    serde_json::from_str(&data).with_context(|| format!("parsing {}", path.display()))
+}
+
 /// Update `<run_dir>/manifest.json` to a terminal status and stamp `finished_at`.
 ///
 /// Reads the existing manifest back so the initial fields are preserved verbatim.
 pub fn finalize_manifest(run_dir: &Path, status: RunStatus) -> Result<()> {
-    let path = run_dir.join("manifest.json");
-    let data = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-    let mut manifest: Manifest =
-        serde_json::from_str(&data).with_context(|| format!("parsing {}", path.display()))?;
+    let mut manifest = read_manifest(run_dir)?;
     manifest.status = status;
     manifest.finished_at = Some(Utc::now().to_rfc3339());
     write_manifest(run_dir, &manifest)
+}
+
+/// Reopen an existing (non-empty) run dir for resume.
+///
+/// Bypasses [`create_run_dir`]'s non-empty guard: flips the manifest status back
+/// to `Running` and clears `finished_at`. `events.jsonl` is untouched here - the
+/// worker stream is opened in append mode, so resume events extend the existing
+/// log rather than clobbering it.
+pub fn reopen_run_dir(run_dir: &Path) -> Result<Manifest> {
+    let mut manifest = read_manifest(run_dir)?;
+    manifest.status = RunStatus::Running;
+    manifest.finished_at = None;
+    write_manifest(run_dir, &manifest)?;
+    Ok(manifest)
+}
+
+/// sha256 (hex) of the primary source safetensors file, for manifest provenance.
+///
+/// ponytail: hash the primary `model.safetensors`; upgrade to a header +
+/// shard-manifest digest if big-model / sharded provenance gets expensive.
+pub fn source_hash(model_dir: &Path) -> Result<String> {
+    let path = model_dir.join("model.safetensors");
+    let mut file = fs::File::open(&path).with_context(|| format!("opening {}", path.display()))?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher).with_context(|| format!("hashing {}", path.display()))?;
+    Ok(format!("{:x}", hasher.finalize()))
 }

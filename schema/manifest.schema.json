@@ -7,14 +7,40 @@
     "a2d_version": {
       "type": "string"
     },
+    "conversion_config": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ConversionConfig"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "created_at": {
       "description": "RFC3339 timestamp.",
       "type": "string"
+    },
+    "data_source": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "finished_at": {
       "type": [
         "string",
         "null"
+      ]
+    },
+    "identity": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IdentityResult"
+        },
+        {
+          "type": "null"
+        }
       ]
     },
     "job_id": {
@@ -23,11 +49,35 @@
     "model_path": {
       "type": "string"
     },
+    "model_spec": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelSpec"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "schema_version": {
       "type": "string"
     },
+    "source_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "status": {
       "$ref": "#/$defs/RunStatus"
+    },
+    "token_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0
     }
   },
   "required": [
@@ -39,6 +89,241 @@
     "status"
   ],
   "$defs": {
+    "Capability": {
+      "title": "Capability",
+      "type": "string",
+      "enum": [
+        "paradigm.ar-transformer",
+        "paradigm.ssm",
+        "attn.full",
+        "attn.gqa",
+        "attn.swa",
+        "attn.sink",
+        "attn.mla",
+        "pos.rope",
+        "pos.rope.partial",
+        "pos.learned",
+        "pos.alibi",
+        "ffn.dense",
+        "ffn.moe",
+        "ffn.moe.shared-experts",
+        "norm.rms",
+        "norm.sandwich",
+        "head.logit-softcap",
+        "weights.bf16",
+        "weights.mxfp4",
+        "weights.gptq"
+      ]
+    },
+    "ConversionConfig": {
+      "description": "The conversion knobs. REQUIRED on `ConversionJob` (transient, never persisted,\nso no back-compat reason to make it Option).",
+      "type": "object",
+      "properties": {
+        "anneal_schedule": {
+          "description": "\"linear\" (cosine is a drop-in).",
+          "type": "string"
+        },
+        "anneal_steps": {
+          "description": "Attention causal->bidir window (drives ONLY the attention anneal).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "data": {
+          "description": "Required local jsonl/txt path.",
+          "type": "string"
+        },
+        "device": {
+          "description": "\"auto\"|\"cpu\"|\"mps\"|\"cuda\".",
+          "type": "string"
+        },
+        "dtype": {
+          "description": "\"float32\"|\"bfloat16\", default float32.",
+          "type": "string"
+        },
+        "grad_accum": {
+          "description": "Default 1; -> gradient_accumulation_steps.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "keep_last": {
+          "description": "Default 3; maps to save_total_limit.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "lr": {
+          "type": "number",
+          "format": "double"
+        },
+        "mask_token": {
+          "description": "\"reuse\"|\"grow\", default resolved from detect's MaskStrategy.",
+          "type": "string"
+        },
+        "max_steps": {
+          "description": "Exactly one of max_steps/max_tokens required.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "max_tokens": {
+          "description": "Resolved to max_steps = ceil(max_tokens / tokens_per_step) at config-build.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "objective": {
+          "description": "\"mdlm\", resolved via the objectives registry.",
+          "type": "string"
+        },
+        "per_device_batch_size": {
+          "description": "Default 8; -> TrainingArguments.per_device_train_batch_size.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "seed": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "seq_len": {
+          "description": "Default 512, <= GPT-2 n_positions 1024.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "objective",
+        "data",
+        "anneal_steps",
+        "anneal_schedule",
+        "seq_len",
+        "per_device_batch_size",
+        "grad_accum",
+        "lr",
+        "mask_token",
+        "keep_last",
+        "seed",
+        "device",
+        "dtype"
+      ]
+    },
+    "IdentityResult": {
+      "description": "The identity-gate record written into the manifest.",
+      "type": "object",
+      "properties": {
+        "max_abs_diff": {
+          "type": "number",
+          "format": "double"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "tolerance": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "passed",
+        "max_abs_diff",
+        "tolerance"
+      ]
+    },
+    "ModelSpec": {
+      "description": "Flat, pure description of the model. No AttentionSpec/FFNSpec nesting this phase.",
+      "type": "object",
+      "properties": {
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Capability"
+          }
+        },
+        "d_model": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "inferred": {
+          "description": "true from GenericAdapter, false from a trusted known adapter.",
+          "type": "boolean"
+        },
+        "mask_token_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "model_type": {
+          "type": "string"
+        },
+        "n_active_experts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "n_experts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "n_heads": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "n_kv_heads": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "n_layers": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "sliding_window": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "vocab_size": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "model_type",
+        "n_layers",
+        "d_model",
+        "vocab_size",
+        "n_heads",
+        "n_kv_heads",
+        "capabilities",
+        "inferred"
+      ]
+    },
     "RunStatus": {
       "type": "string",
       "enum": [

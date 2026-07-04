@@ -10,4 +10,4 @@
 pub mod rundir;
 pub mod worker;
 
-pub use worker::run_job;
+pub use worker::{resume_job, run_job};

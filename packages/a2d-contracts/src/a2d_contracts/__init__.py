@@ -15,16 +15,19 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 __all__ = [
+    "ConversionConfig",
     "ConversionJob",
     "Event",
     "EventEnvelope",
     "LogLevel",
     "Manifest",
     "RunStatus",
+    "SampleRequest",
 ]
 
 if TYPE_CHECKING:
     # Static view for type checkers; valid once codegen has produced models/.
+    from .models.conversion_job_schema import ConversionConfig as ConversionConfig
     from .models.conversion_job_schema import ConversionJob as ConversionJob
     from .models.event_envelope_schema import (
         Event as Event,
@@ -37,10 +40,16 @@ if TYPE_CHECKING:
     )
     from .models.manifest_schema import Manifest as Manifest
     from .models.manifest_schema import RunStatus as RunStatus
+    from .models.sample_request_schema import SampleRequest as SampleRequest
 else:
     import importlib
 
-    _MODULES = ("conversion_job_schema", "event_envelope_schema", "manifest_schema")
+    _MODULES = (
+        "conversion_job_schema",
+        "event_envelope_schema",
+        "manifest_schema",
+        "sample_request_schema",
+    )
 
     def _resolve(name):
         for mod_name in _MODULES:
@@ -53,9 +62,11 @@ else:
                 return obj
         raise ImportError(f"{name!r} not found in a2d_contracts.models; run scripts/codegen.sh")
 
+    ConversionConfig = _resolve("ConversionConfig")
     ConversionJob = _resolve("ConversionJob")
     Event = _resolve("Event")
     EventEnvelope = _resolve("EventEnvelope")
     LogLevel = _resolve("LogLevel")
     Manifest = _resolve("Manifest")
     RunStatus = _resolve("RunStatus")
+    SampleRequest = _resolve("SampleRequest")

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SampleRequest",
+  "description": "The a2d-sample worker request (the ONE new export-schema root).",
+  "type": "object",
+  "properties": {
+    "canvas_len": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "device": {
+      "type": "string"
+    },
+    "model_dir": {
+      "type": "string"
+    },
+    "num_steps": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "seed": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "temperature": {
+      "type": "number",
+      "format": "double"
+    }
+  },
+  "required": [
+    "schema_version",
+    "model_dir",
+    "prompt",
+    "canvas_len",
+    "num_steps",
+    "temperature",
+    "seed",
+    "device"
+  ]
+}

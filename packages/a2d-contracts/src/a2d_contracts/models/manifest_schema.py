@@ -4,7 +4,96 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, conint
+
+
+class Capability(StrEnum):
+    paradigm_ar_transformer = "paradigm.ar-transformer"
+    paradigm_ssm = "paradigm.ssm"
+    attn_full = "attn.full"
+    attn_gqa = "attn.gqa"
+    attn_swa = "attn.swa"
+    attn_sink = "attn.sink"
+    attn_mla = "attn.mla"
+    pos_rope = "pos.rope"
+    pos_rope_partial = "pos.rope.partial"
+    pos_learned = "pos.learned"
+    pos_alibi = "pos.alibi"
+    ffn_dense = "ffn.dense"
+    ffn_moe = "ffn.moe"
+    ffn_moe_shared_experts = "ffn.moe.shared-experts"
+    norm_rms = "norm.rms"
+    norm_sandwich = "norm.sandwich"
+    head_logit_softcap = "head.logit-softcap"
+    weights_bf16 = "weights.bf16"
+    weights_mxfp4 = "weights.mxfp4"
+    weights_gptq = "weights.gptq"
+
+
+class ConversionConfig(BaseModel):
+    """
+    The conversion knobs. REQUIRED on `ConversionJob` (transient, never persisted,
+    so no back-compat reason to make it Option).
+    """
+
+    anneal_schedule: str = Field(..., description='"linear" (cosine is a drop-in).')
+    anneal_steps: conint(ge=0) = Field(
+        ...,
+        description="Attention causal->bidir window (drives ONLY the attention anneal).",
+    )
+    data: str = Field(..., description="Required local jsonl/txt path.")
+    device: str = Field(..., description='"auto"|"cpu"|"mps"|"cuda".')
+    dtype: str = Field(..., description='"float32"|"bfloat16", default float32.')
+    grad_accum: conint(ge=0) = Field(..., description="Default 1; -> gradient_accumulation_steps.")
+    keep_last: conint(ge=0) = Field(..., description="Default 3; maps to save_total_limit.")
+    lr: float
+    mask_token: str = Field(
+        ..., description='"reuse"|"grow", default resolved from detect\'s MaskStrategy.'
+    )
+    max_steps: conint(ge=0) | None = Field(
+        None, description="Exactly one of max_steps/max_tokens required."
+    )
+    max_tokens: conint(ge=0) | None = Field(
+        None,
+        description="Resolved to max_steps = ceil(max_tokens / tokens_per_step) at config-build.",
+    )
+    objective: str = Field(..., description='"mdlm", resolved via the objectives registry.')
+    per_device_batch_size: conint(ge=0) = Field(
+        ..., description="Default 8; -> TrainingArguments.per_device_train_batch_size."
+    )
+    seed: conint(ge=0)
+    seq_len: conint(ge=0) = Field(..., description="Default 512, <= GPT-2 n_positions 1024.")
+
+
+class IdentityResult(BaseModel):
+    """
+    The identity-gate record written into the manifest.
+    """
+
+    max_abs_diff: float
+    passed: bool
+    tolerance: float
+
+
+class ModelSpec(BaseModel):
+    """
+    Flat, pure description of the model. No AttentionSpec/FFNSpec nesting this phase.
+    """
+
+    capabilities: list[Capability]
+    d_model: conint(ge=0)
+    inferred: bool = Field(
+        ..., description="true from GenericAdapter, false from a trusted known adapter."
+    )
+    mask_token_id: int | None = None
+    model_type: str
+    n_active_experts: conint(ge=0) | None = None
+    n_experts: conint(ge=0) | None = None
+    n_heads: conint(ge=0)
+    n_kv_heads: conint(ge=0)
+    n_layers: conint(ge=0)
+    sliding_window: conint(ge=0) | None = None
+    vocab_size: conint(ge=0)
 
 
 class RunStatus(StrEnum):
@@ -19,9 +108,15 @@ class Manifest(BaseModel):
     """
 
     a2d_version: str
+    conversion_config: ConversionConfig | None = None
     created_at: str = Field(..., description="RFC3339 timestamp.")
+    data_source: str | None = None
     finished_at: str | None = None
+    identity: IdentityResult | None = None
     job_id: str
     model_path: str
+    model_spec: ModelSpec | None = None
     schema_version: str
+    source_hash: str | None = None
     status: RunStatus
+    token_count: conint(ge=0) | None = None

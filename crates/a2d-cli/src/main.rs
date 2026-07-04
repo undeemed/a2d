@@ -5,7 +5,10 @@ use clap::{Parser, Subcommand};
 
 mod convert;
 mod detect;
+mod resume;
 mod runs;
+mod sample;
+mod worker_cmd;
 
 /// a2d - convert local autoregressive LLMs into diffusion language models.
 #[derive(Parser)]
@@ -17,17 +20,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Convert a local AR model into a diffusion checkpoint (Phase 0: no-op walking skeleton).
-    Convert {
-        /// Local model directory (must already contain downloaded weights).
-        model_dir: PathBuf,
-        /// Run directory to create for this conversion.
-        #[arg(long = "out")]
-        run_dir: PathBuf,
-        /// Override the worker command (default: A2D_WORKER_CMD env, else dev uv default).
-        #[arg(long = "worker-cmd")]
-        worker_cmd: Option<String>,
-    },
+    /// Convert a local AR model into a diffusion checkpoint.
+    Convert(convert::ConvertArgs),
     /// List conversion runs found under a root directory.
     Runs {
         /// Root directory to scan (default: ./runs).
@@ -42,21 +36,15 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Resume a conversion run (Phase 2).
-    Resume {
-        #[allow(dead_code)]
-        path: PathBuf,
-    },
+    /// Resume a conversion run.
+    Resume(resume::ResumeArgs),
     /// Evaluate a converted checkpoint (Phase 3).
     Eval {
         #[allow(dead_code)]
         path: PathBuf,
     },
-    /// Sample from a converted checkpoint (Phase 5).
-    Sample {
-        #[allow(dead_code)]
-        path: PathBuf,
-    },
+    /// Sample from a converted checkpoint.
+    Sample(sample::SampleArgs),
 }
 
 /// A subcommand that isn't live yet: explain and exit 2 (contract-violation-style code).
@@ -65,36 +53,24 @@ fn stub(name: &str) -> ExitCode {
     ExitCode::from(2)
 }
 
+fn dispatch<T>(result: anyhow::Result<T>, on_ok: impl FnOnce(T) -> ExitCode) -> ExitCode {
+    match result {
+        Ok(v) => on_ok(v),
+        Err(e) => {
+            eprintln!("error: {e:#}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Command::Convert {
-            model_dir,
-            run_dir,
-            worker_cmd,
-        } => match convert::run(&model_dir, &run_dir, worker_cmd) {
-            Ok(code) => code,
-            Err(e) => {
-                eprintln!("error: {e:#}");
-                ExitCode::FAILURE
-            }
-        },
-        Command::Runs { root } => match runs::run(root) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("error: {e:#}");
-                ExitCode::FAILURE
-            }
-        },
-        Command::Detect { path, json } => match detect::run(&path, json) {
-            Ok(code) => code,
-            Err(e) => {
-                eprintln!("error: {e:#}");
-                ExitCode::FAILURE
-            }
-        },
-        Command::Resume { .. } => stub("resume"),
+        Command::Convert(args) => dispatch(convert::run(args), |code| code),
+        Command::Runs { root } => dispatch(runs::run(root), |()| ExitCode::SUCCESS),
+        Command::Detect { path, json } => dispatch(detect::run(&path, json), |code| code),
+        Command::Resume(args) => dispatch(resume::run(args), |code| code),
         Command::Eval { .. } => stub("eval"),
-        Command::Sample { .. } => stub("sample"),
+        Command::Sample(args) => dispatch(sample::run(args), |code| code),
     }
 }

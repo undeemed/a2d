@@ -4,6 +4,9 @@
   "description": "Job sent to the worker on stdin.",
   "type": "object",
   "properties": {
+    "conversion_config": {
+      "$ref": "#/$defs/ConversionConfig"
+    },
     "job_id": {
       "type": "string"
     },
@@ -22,6 +25,111 @@
     "schema_version",
     "job_id",
     "model_path",
-    "run_dir"
-  ]
+    "run_dir",
+    "conversion_config"
+  ],
+  "$defs": {
+    "ConversionConfig": {
+      "description": "The conversion knobs. REQUIRED on `ConversionJob` (transient, never persisted,\nso no back-compat reason to make it Option).",
+      "type": "object",
+      "properties": {
+        "anneal_schedule": {
+          "description": "\"linear\" (cosine is a drop-in).",
+          "type": "string"
+        },
+        "anneal_steps": {
+          "description": "Attention causal->bidir window (drives ONLY the attention anneal).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "data": {
+          "description": "Required local jsonl/txt path.",
+          "type": "string"
+        },
+        "device": {
+          "description": "\"auto\"|\"cpu\"|\"mps\"|\"cuda\".",
+          "type": "string"
+        },
+        "dtype": {
+          "description": "\"float32\"|\"bfloat16\", default float32.",
+          "type": "string"
+        },
+        "grad_accum": {
+          "description": "Default 1; -> gradient_accumulation_steps.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "keep_last": {
+          "description": "Default 3; maps to save_total_limit.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "lr": {
+          "type": "number",
+          "format": "double"
+        },
+        "mask_token": {
+          "description": "\"reuse\"|\"grow\", default resolved from detect's MaskStrategy.",
+          "type": "string"
+        },
+        "max_steps": {
+          "description": "Exactly one of max_steps/max_tokens required.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "max_tokens": {
+          "description": "Resolved to max_steps = ceil(max_tokens / tokens_per_step) at config-build.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "objective": {
+          "description": "\"mdlm\", resolved via the objectives registry.",
+          "type": "string"
+        },
+        "per_device_batch_size": {
+          "description": "Default 8; -> TrainingArguments.per_device_train_batch_size.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "seed": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "seq_len": {
+          "description": "Default 512, <= GPT-2 n_positions 1024.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "objective",
+        "data",
+        "anneal_steps",
+        "anneal_schedule",
+        "seq_len",
+        "per_device_batch_size",
+        "grad_accum",
+        "lr",
+        "mask_token",
+        "keep_last",
+        "seed",
+        "device",
+        "dtype"
+      ]
+    }
+  }
 }

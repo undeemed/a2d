@@ -2,7 +2,42 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, conint
+
+
+class ConversionConfig(BaseModel):
+    """
+    The conversion knobs. REQUIRED on `ConversionJob` (transient, never persisted,
+    so no back-compat reason to make it Option).
+    """
+
+    anneal_schedule: str = Field(..., description='"linear" (cosine is a drop-in).')
+    anneal_steps: conint(ge=0) = Field(
+        ...,
+        description="Attention causal->bidir window (drives ONLY the attention anneal).",
+    )
+    data: str = Field(..., description="Required local jsonl/txt path.")
+    device: str = Field(..., description='"auto"|"cpu"|"mps"|"cuda".')
+    dtype: str = Field(..., description='"float32"|"bfloat16", default float32.')
+    grad_accum: conint(ge=0) = Field(..., description="Default 1; -> gradient_accumulation_steps.")
+    keep_last: conint(ge=0) = Field(..., description="Default 3; maps to save_total_limit.")
+    lr: float
+    mask_token: str = Field(
+        ..., description='"reuse"|"grow", default resolved from detect\'s MaskStrategy.'
+    )
+    max_steps: conint(ge=0) | None = Field(
+        None, description="Exactly one of max_steps/max_tokens required."
+    )
+    max_tokens: conint(ge=0) | None = Field(
+        None,
+        description="Resolved to max_steps = ceil(max_tokens / tokens_per_step) at config-build.",
+    )
+    objective: str = Field(..., description='"mdlm", resolved via the objectives registry.')
+    per_device_batch_size: conint(ge=0) = Field(
+        ..., description="Default 8; -> TrainingArguments.per_device_train_batch_size."
+    )
+    seed: conint(ge=0)
+    seq_len: conint(ge=0) = Field(..., description="Default 512, <= GPT-2 n_positions 1024.")
 
 
 class ConversionJob(BaseModel):
@@ -13,6 +48,7 @@ class ConversionJob(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    conversion_config: ConversionConfig
     job_id: str
     model_path: str
     run_dir: str

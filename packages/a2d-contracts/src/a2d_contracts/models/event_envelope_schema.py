@@ -18,6 +18,67 @@ class JobStarted(BaseModel):
     worker: str
 
 
+class Progress(BaseModel):
+    """
+    Worker event payload. Internally tagged so each line is a flat object:
+    `{"type":"log","level":"info","message":"..."}`.
+    """
+
+    stage: str
+    step: conint(ge=0)
+    total: conint(ge=0) | None = None
+    type: Literal["progress"]
+
+
+class TrainStep(BaseModel):
+    """
+    Worker event payload. Internally tagged so each line is a flat object:
+    `{"type":"log","level":"info","message":"..."}`.
+    """
+
+    anneal: float
+    loss: float
+    lr: float
+    step: conint(ge=0)
+    tokens: conint(ge=0)
+    type: Literal["train_step"]
+
+
+class IdentityGate(BaseModel):
+    """
+    Worker event payload. Internally tagged so each line is a flat object:
+    `{"type":"log","level":"info","message":"..."}`.
+    """
+
+    max_abs_diff: float
+    passed: bool
+    tolerance: float
+    type: Literal["identity_gate"]
+
+
+class Checkpoint(BaseModel):
+    """
+    Worker event payload. Internally tagged so each line is a flat object:
+    `{"type":"log","level":"info","message":"..."}`.
+    """
+
+    path: str
+    step: conint(ge=0)
+    type: Literal["checkpoint"]
+
+
+class Metric(BaseModel):
+    """
+    Worker event payload. Internally tagged so each line is a flat object:
+    `{"type":"log","level":"info","message":"..."}`.
+    """
+
+    name: str
+    step: conint(ge=0)
+    type: Literal["metric"]
+    value: float
+
+
 class JobCompleted(BaseModel):
     """
     Worker event payload. Internally tagged so each line is a flat object:
@@ -55,8 +116,30 @@ class Log(BaseModel):
     type: Literal["log"]
 
 
-class Event(RootModel[JobStarted | Log | JobCompleted | JobFailed]):
-    root: JobStarted | Log | JobCompleted | JobFailed = Field(
+class Event(
+    RootModel[
+        JobStarted
+        | Log
+        | Progress
+        | TrainStep
+        | IdentityGate
+        | Checkpoint
+        | Metric
+        | JobCompleted
+        | JobFailed
+    ]
+):
+    root: (
+        JobStarted
+        | Log
+        | Progress
+        | TrainStep
+        | IdentityGate
+        | Checkpoint
+        | Metric
+        | JobCompleted
+        | JobFailed
+    ) = Field(
         ...,
         description='Worker event payload. Internally tagged so each line is a flat object:\n`{"type":"log","level":"info","message":"..."}`.',
     )

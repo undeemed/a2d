@@ -2,10 +2,19 @@
 name = "a2d-worker-hf"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["a2d-contracts", "pydantic>=2"]
+dependencies = [
+    "a2d-contracts",
+    "pydantic>=2",
+    "torch",
+    # Pinned: Decision 2 patches GPT-2's exact eager attention seam in 4.48.3.
+    "transformers==4.48.3",
+    "accelerate",
+    "safetensors",
+]
 
 [project.scripts]
 a2d-worker = "a2d_core.worker:main"
+a2d-sample = "a2d_core.sample_main:main"
 
 [build-system]
 requires = ["hatchling"]

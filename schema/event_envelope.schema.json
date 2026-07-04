@@ -73,6 +73,155 @@
           ]
         },
         {
+          "title": "Progress",
+          "type": "object",
+          "properties": {
+            "stage": {
+              "type": "string"
+            },
+            "step": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "total": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "progress"
+            }
+          },
+          "required": [
+            "type",
+            "stage",
+            "step"
+          ]
+        },
+        {
+          "title": "TrainStep",
+          "type": "object",
+          "properties": {
+            "anneal": {
+              "type": "number",
+              "format": "double"
+            },
+            "loss": {
+              "type": "number",
+              "format": "double"
+            },
+            "lr": {
+              "type": "number",
+              "format": "double"
+            },
+            "step": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "tokens": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "train_step"
+            }
+          },
+          "required": [
+            "type",
+            "step",
+            "loss",
+            "anneal",
+            "lr",
+            "tokens"
+          ]
+        },
+        {
+          "title": "IdentityGate",
+          "type": "object",
+          "properties": {
+            "max_abs_diff": {
+              "type": "number",
+              "format": "double"
+            },
+            "passed": {
+              "type": "boolean"
+            },
+            "tolerance": {
+              "type": "number",
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "const": "identity_gate"
+            }
+          },
+          "required": [
+            "type",
+            "passed",
+            "max_abs_diff",
+            "tolerance"
+          ]
+        },
+        {
+          "title": "Checkpoint",
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "step": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "checkpoint"
+            }
+          },
+          "required": [
+            "type",
+            "step",
+            "path"
+          ]
+        },
+        {
+          "title": "Metric",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "step": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "metric"
+            },
+            "value": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "required": [
+            "type",
+            "name",
+            "value",
+            "step"
+          ]
+        },
+        {
           "title": "JobCompleted",
           "type": "object",
           "properties": {

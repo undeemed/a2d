@@ -5,7 +5,9 @@
 use std::fs;
 use std::path::Path;
 
-use a2d_contracts::{ConversionJob, EventEnvelope, Manifest, SampleRequest};
+use a2d_contracts::{
+    ConversionJob, EvalReport, EvalRequest, EventEnvelope, Manifest, SampleRequest,
+};
 
 fn main() -> std::io::Result<()> {
     // Workspace `schema/` dir, resolved relative to this crate at build time.
@@ -27,6 +29,16 @@ fn main() -> std::io::Result<()> {
         dir,
         "sample_request.schema.json",
         schemars::schema_for!(SampleRequest),
+    )?;
+    write(
+        dir,
+        "eval_request.schema.json",
+        schemars::schema_for!(EvalRequest),
+    )?;
+    write(
+        dir,
+        "eval_report.schema.json",
+        schemars::schema_for!(EvalReport),
     )?;
 
     Ok(())

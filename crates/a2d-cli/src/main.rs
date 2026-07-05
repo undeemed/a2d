@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 
 mod convert;
 mod detect;
+mod eval;
 mod resume;
 mod runs;
 mod sample;
@@ -39,18 +40,9 @@ enum Command {
     /// Resume a conversion run.
     Resume(resume::ResumeArgs),
     /// Evaluate a converted checkpoint (Phase 3).
-    Eval {
-        #[allow(dead_code)]
-        path: PathBuf,
-    },
+    Eval(eval::EvalArgs),
     /// Sample from a converted checkpoint.
     Sample(sample::SampleArgs),
-}
-
-/// A subcommand that isn't live yet: explain and exit 2 (contract-violation-style code).
-fn stub(name: &str) -> ExitCode {
-    eprintln!("error: 'a2d {name}' is not implemented yet (see the roadmap in docs/SPEC-HANDOFF.md section 6)");
-    ExitCode::from(2)
 }
 
 fn dispatch<T>(result: anyhow::Result<T>, on_ok: impl FnOnce(T) -> ExitCode) -> ExitCode {
@@ -70,7 +62,7 @@ fn main() -> ExitCode {
         Command::Runs { root } => dispatch(runs::run(root), |()| ExitCode::SUCCESS),
         Command::Detect { path, json } => dispatch(detect::run(&path, json), |code| code),
         Command::Resume(args) => dispatch(resume::run(args), |code| code),
-        Command::Eval { .. } => stub("eval"),
+        Command::Eval(args) => dispatch(eval::run(args), |code| code),
         Command::Sample(args) => dispatch(sample::run(args), |code| code),
     }
 }

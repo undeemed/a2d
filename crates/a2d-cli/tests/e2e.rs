@@ -147,6 +147,88 @@ fn convert_both_token_budgets_is_usage_error_exit_2() {
     assert!(!run_dir.exists(), "no run dir on usage error");
 }
 
+/// A fake a2d-eval worker: extract out_dir from the JSON request on stdin, write a
+/// stub report.json there, print a summary. Pure sh (torch-free), like the convert stub.
+const FAKE_EVAL_WORKER: &str = r#"#!/bin/sh
+req=$(cat)
+out=$(printf '%s' "$req" | sed -n 's/.*"out_dir":"\([^"]*\)".*/\1/p')
+mkdir -p "$out"
+printf '{"stub":true}\n' > "$out/report.json"
+echo "wrote $out/report.json"
+"#;
+
+/// A run dir with a model/ and a minimal completed manifest carrying source provenance.
+fn evaluable_run_dir(base: &std::path::Path) -> std::path::PathBuf {
+    let run_dir = base.join("run");
+    std::fs::create_dir_all(run_dir.join("model")).unwrap();
+    let manifest = Manifest {
+        schema_version: "0.1.0".into(),
+        a2d_version: "0.1.0".into(),
+        job_id: "t".into(),
+        created_at: "2026-07-05T00:00:00Z".into(),
+        model_path: base.join("source").to_string_lossy().into_owned(),
+        status: RunStatus::Completed,
+        finished_at: None,
+        model_spec: None,
+        conversion_config: None,
+        identity: None,
+        data_source: None,
+        source_hash: Some("deadbeef".into()),
+        token_count: None,
+    };
+    std::fs::write(
+        run_dir.join("manifest.json"),
+        serde_json::to_string(&manifest).unwrap(),
+    )
+    .unwrap();
+    run_dir
+}
+
+#[test]
+fn eval_smoke_writes_report_via_fake_worker() {
+    let base = tempfile::tempdir().expect("tempdir");
+    let run_dir = evaluable_run_dir(base.path());
+    let script = base.path().join("fake_eval.sh");
+    std::fs::write(&script, FAKE_EVAL_WORKER).unwrap();
+    let worker_cmd = format!("sh {}", script.to_str().unwrap());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_a2d"))
+        .args(["eval"])
+        .arg(&run_dir)
+        .args(["--data", "./fixtures/data/tiny.jsonl"])
+        .args(["--worker-cmd", &worker_cmd])
+        .output()
+        .expect("spawn a2d");
+
+    assert_eq!(output.status.code(), Some(0), "eval-smoke should exit 0");
+    assert!(
+        run_dir.join("eval/report.json").exists(),
+        "eval/report.json must be written"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("wrote"), "summary passed through: {stdout}");
+}
+
+#[test]
+fn eval_missing_model_dir_aborts_exit_1() {
+    let base = tempfile::tempdir().expect("tempdir");
+    let run_dir = base.path().join("run");
+    std::fs::create_dir_all(&run_dir).unwrap();
+    let sentinel = "this-eval-worker-must-never-be-spawned";
+
+    let output = Command::new(env!("CARGO_BIN_EXE_a2d"))
+        .args(["eval"])
+        .arg(&run_dir)
+        .args(["--data", "./fixtures/data/tiny.jsonl"])
+        .args(["--worker-cmd", sentinel])
+        .output()
+        .expect("spawn a2d");
+
+    assert_eq!(output.status.code(), Some(1), "no model/ -> exit 1");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("no model/"), "stderr explains: {stderr}");
+}
+
 #[test]
 fn detect_supported_fixture_exits_0() {
     let output = Command::new(env!("CARGO_BIN_EXE_a2d"))

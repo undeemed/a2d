@@ -269,6 +269,104 @@ pub struct SampleRequest {
     pub device: String,
 }
 
+/// The a2d-eval worker request (export-schema root, sibling of `SampleRequest`).
+/// Eval is a read-only spot analysis on `model/`: this is fed on stdin, the worker
+/// writes `out_dir/report.json` (+ `report.html` under `html`), never a manifest.
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct EvalRequest {
+    pub schema_version: String,
+    /// `<run-dir>/model` - the converted checkpoint to evaluate.
+    pub model_dir: String,
+    /// `manifest.model_path` - the AR base for comparison; None => skip the AR baseline.
+    pub source_model: Option<String>,
+    /// `manifest.source_hash` - verified before trusting `source_model`.
+    pub source_hash: Option<String>,
+    /// Held-out corpus for the likelihood bound + AR perplexity (local jsonl/txt).
+    pub data: String,
+    /// Downstream tasks to run; empty => all registered.
+    pub tasks: Vec<String>,
+    pub seq_len: u64,
+    /// Monte-Carlo `t` draws per chunk for the MDLM bound (variance reduction).
+    pub mc_samples: u64,
+    /// Cap on scored tokens, keeps eval bounded.
+    pub max_eval_tokens: u64,
+    /// Denoiser steps for the diffusion throughput measurement.
+    pub num_steps: u64,
+    pub seed: u64,
+    /// "auto"|"cpu"|"mps"|"cuda".
+    pub device: String,
+    /// `<run-dir>/eval` - where report.json / report.html land.
+    pub out_dir: String,
+    /// Also write report.html.
+    pub html: bool,
+}
+
+/// MDLM negative-log-likelihood upper bound (the AR-vs-diffusion apples-to-apples
+/// number, ARCHITECTURE §9), estimated by Monte-Carlo over the diffusion time `t`.
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct LikelihoodBound {
+    pub nats_per_token: f64,
+    pub bits_per_token: f64,
+    /// Monte-Carlo standard error over `mc_samples`.
+    pub std_error: f64,
+    pub mc_samples: u64,
+    pub n_tokens: u64,
+}
+
+/// Best-effort baseline from the SOURCE AR model; `available=false` with a reason
+/// when the source weights are absent or the hash mismatches (Decision 6).
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct ArBaseline {
+    pub available: bool,
+    /// Why unavailable (source gone / hash mismatch); None when available.
+    pub reason: Option<String>,
+    /// exp(mean teacher-forced NLL) of the source AR model on `data`.
+    pub perplexity: Option<f64>,
+    /// The AR NLL; NOT directly comparable to the diffusion bound (rendered with a caveat).
+    pub nats_per_token: Option<f64>,
+}
+
+/// Decode throughput; MDLM's fixed-step forward passes make `speedup < 1` honestly
+/// (BD3LM is the payoff, P5). AR fields are None when the source is absent.
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct ThroughputResult {
+    pub diffusion_tokens_per_sec: f64,
+    pub ar_tokens_per_sec: Option<f64>,
+    /// diffusion / ar.
+    pub speedup: Option<f64>,
+    pub num_steps: u64,
+}
+
+/// One downstream-task score.
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct TaskResult {
+    pub name: String,
+    /// e.g. "accuracy".
+    pub metric: String,
+    pub value: f64,
+    /// Number of scored examples.
+    pub n: u64,
+}
+
+/// The reproducible report written to `<run-dir>/eval/report.json` (export-schema
+/// root). Self-contained provenance (Decision 7): no Manifest field mirrors it.
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct EvalReport {
+    pub schema_version: String,
+    pub a2d_version: String,
+    /// RFC3339; the ONE field excluded from the determinism check.
+    pub created_at: String,
+    pub model_dir: String,
+    pub source_model: Option<String>,
+    pub source_hash: Option<String>,
+    pub data_source: String,
+    pub seed: u64,
+    pub likelihood: LikelihoodBound,
+    pub ar_baseline: Option<ArBaseline>,
+    pub throughput: ThroughputResult,
+    pub tasks: Vec<TaskResult>,
+}
+
 /// Job sent to the worker on stdin.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -517,6 +615,89 @@ mod tests {
             ..manifest
         };
         assert_eq!(finished, roundtrip(&finished));
+    }
+
+    #[test]
+    fn eval_request_roundtrip() {
+        let req = EvalRequest {
+            schema_version: SCHEMA_VERSION.to_string(),
+            model_dir: "runs/demo/model".into(),
+            source_model: Some("/tmp/gpt2".into()),
+            source_hash: Some("deadbeef".into()),
+            data: "./fixtures/eval/held_out.jsonl".into(),
+            tasks: vec!["infill_accuracy".into(), "cloze_likelihood".into()],
+            seq_len: 128,
+            mc_samples: 8,
+            max_eval_tokens: 4096,
+            num_steps: 32,
+            seed: 0,
+            device: "auto".into(),
+            out_dir: "runs/demo/eval".into(),
+            html: true,
+        };
+        assert_eq!(req, roundtrip(&req));
+    }
+
+    fn sample_report() -> EvalReport {
+        EvalReport {
+            schema_version: SCHEMA_VERSION.to_string(),
+            a2d_version: "0.1.0".into(),
+            created_at: "2026-07-04T10:00:00Z".into(),
+            model_dir: "runs/demo/model".into(),
+            source_model: Some("/tmp/gpt2".into()),
+            source_hash: Some("deadbeef".into()),
+            data_source: "./fixtures/eval/held_out.jsonl".into(),
+            seed: 0,
+            likelihood: LikelihoodBound {
+                nats_per_token: 3.5,
+                bits_per_token: 5.05,
+                std_error: 0.02,
+                mc_samples: 8,
+                n_tokens: 4096,
+            },
+            ar_baseline: Some(ArBaseline {
+                available: true,
+                reason: None,
+                perplexity: Some(29.0),
+                nats_per_token: Some(3.37),
+            }),
+            throughput: ThroughputResult {
+                diffusion_tokens_per_sec: 120.0,
+                ar_tokens_per_sec: Some(400.0),
+                speedup: Some(0.3),
+                num_steps: 32,
+            },
+            tasks: vec![TaskResult {
+                name: "infill_accuracy".into(),
+                metric: "accuracy".into(),
+                value: 0.42,
+                n: 100,
+            }],
+        }
+    }
+
+    #[test]
+    fn eval_report_roundtrip() {
+        let report = sample_report();
+        assert_eq!(report, roundtrip(&report));
+    }
+
+    /// A report with no AR base still round-trips (Decision 6: best-effort baseline).
+    #[test]
+    fn eval_report_without_ar_baseline_roundtrips() {
+        let report = EvalReport {
+            source_model: None,
+            source_hash: None,
+            ar_baseline: None,
+            throughput: ThroughputResult {
+                diffusion_tokens_per_sec: 120.0,
+                ar_tokens_per_sec: None,
+                speedup: None,
+                num_steps: 32,
+            },
+            ..sample_report()
+        };
+        assert_eq!(report, roundtrip(&report));
     }
 
     /// Phase-0/1 manifests have none of the six new fields; they must still

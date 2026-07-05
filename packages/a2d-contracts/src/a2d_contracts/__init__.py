@@ -15,20 +15,32 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 __all__ = [
+    "ArBaseline",
     "ConversionConfig",
     "ConversionJob",
+    "EvalReport",
+    "EvalRequest",
     "Event",
     "EventEnvelope",
+    "LikelihoodBound",
     "LogLevel",
     "Manifest",
     "RunStatus",
     "SampleRequest",
+    "TaskResult",
+    "ThroughputResult",
 ]
 
 if TYPE_CHECKING:
     # Static view for type checkers; valid once codegen has produced models/.
     from .models.conversion_job_schema import ConversionConfig as ConversionConfig
     from .models.conversion_job_schema import ConversionJob as ConversionJob
+    from .models.eval_report_schema import ArBaseline as ArBaseline
+    from .models.eval_report_schema import EvalReport as EvalReport
+    from .models.eval_report_schema import LikelihoodBound as LikelihoodBound
+    from .models.eval_report_schema import TaskResult as TaskResult
+    from .models.eval_report_schema import ThroughputResult as ThroughputResult
+    from .models.eval_request_schema import EvalRequest as EvalRequest
     from .models.event_envelope_schema import (
         Event as Event,
     )
@@ -49,6 +61,8 @@ else:
         "event_envelope_schema",
         "manifest_schema",
         "sample_request_schema",
+        "eval_request_schema",
+        "eval_report_schema",
     )
 
     def _resolve(name):
@@ -62,11 +76,17 @@ else:
                 return obj
         raise ImportError(f"{name!r} not found in a2d_contracts.models; run scripts/codegen.sh")
 
+    ArBaseline = _resolve("ArBaseline")
     ConversionConfig = _resolve("ConversionConfig")
     ConversionJob = _resolve("ConversionJob")
+    EvalReport = _resolve("EvalReport")
+    EvalRequest = _resolve("EvalRequest")
     Event = _resolve("Event")
     EventEnvelope = _resolve("EventEnvelope")
+    LikelihoodBound = _resolve("LikelihoodBound")
     LogLevel = _resolve("LogLevel")
     Manifest = _resolve("Manifest")
     RunStatus = _resolve("RunStatus")
     SampleRequest = _resolve("SampleRequest")
+    TaskResult = _resolve("TaskResult")
+    ThroughputResult = _resolve("ThroughputResult")

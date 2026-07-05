@@ -10,4 +10,5 @@
 pub mod rundir;
 pub mod worker;
 
+pub use rundir::read_manifest;
 pub use worker::{resume_job, run_job};

@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvalRequest",
+  "description": "The a2d-eval worker request (export-schema root, sibling of `SampleRequest`).\nEval is a read-only spot analysis on `model/`: this is fed on stdin, the worker\nwrites `out_dir/report.json` (+ `report.html` under `html`), never a manifest.",
+  "type": "object",
+  "properties": {
+    "data": {
+      "description": "Held-out corpus for the likelihood bound + AR perplexity (local jsonl/txt).",
+      "type": "string"
+    },
+    "device": {
+      "description": "\"auto\"|\"cpu\"|\"mps\"|\"cuda\".",
+      "type": "string"
+    },
+    "html": {
+      "description": "Also write report.html.",
+      "type": "boolean"
+    },
+    "max_eval_tokens": {
+      "description": "Cap on scored tokens, keeps eval bounded.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "mc_samples": {
+      "description": "Monte-Carlo `t` draws per chunk for the MDLM bound (variance reduction).",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "model_dir": {
+      "description": "`<run-dir>/model` - the converted checkpoint to evaluate.",
+      "type": "string"
+    },
+    "num_steps": {
+      "description": "Denoiser steps for the diffusion throughput measurement.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "out_dir": {
+      "description": "`<run-dir>/eval` - where report.json / report.html land.",
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "seed": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "seq_len": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "source_hash": {
+      "description": "`manifest.source_hash` - verified before trusting `source_model`.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_model": {
+      "description": "`manifest.model_path` - the AR base for comparison; None => skip the AR baseline.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tasks": {
+      "description": "Downstream tasks to run; empty => all registered.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "model_dir",
+    "data",
+    "tasks",
+    "seq_len",
+    "mc_samples",
+    "max_eval_tokens",
+    "num_steps",
+    "seed",
+    "device",
+    "out_dir",
+    "html"
+  ]
+}

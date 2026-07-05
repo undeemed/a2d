@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvalReport",
+  "description": "The reproducible report written to `<run-dir>/eval/report.json` (export-schema\nroot). Self-contained provenance (Decision 7): no Manifest field mirrors it.",
+  "type": "object",
+  "properties": {
+    "a2d_version": {
+      "type": "string"
+    },
+    "ar_baseline": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ArBaseline"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "created_at": {
+      "description": "RFC3339; the ONE field excluded from the determinism check.",
+      "type": "string"
+    },
+    "data_source": {
+      "type": "string"
+    },
+    "likelihood": {
+      "$ref": "#/$defs/LikelihoodBound"
+    },
+    "model_dir": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "seed": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "source_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TaskResult"
+      }
+    },
+    "throughput": {
+      "$ref": "#/$defs/ThroughputResult"
+    }
+  },
+  "required": [
+    "schema_version",
+    "a2d_version",
+    "created_at",
+    "model_dir",
+    "data_source",
+    "seed",
+    "likelihood",
+    "throughput",
+    "tasks"
+  ],
+  "$defs": {
+    "ArBaseline": {
+      "description": "Best-effort baseline from the SOURCE AR model; `available=false` with a reason\nwhen the source weights are absent or the hash mismatches (Decision 6).",
+      "type": "object",
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "nats_per_token": {
+          "description": "The AR NLL; NOT directly comparable to the diffusion bound (rendered with a caveat).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "perplexity": {
+          "description": "exp(mean teacher-forced NLL) of the source AR model on `data`.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "reason": {
+          "description": "Why unavailable (source gone / hash mismatch); None when available.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "available"
+      ]
+    },
+    "LikelihoodBound": {
+      "description": "MDLM negative-log-likelihood upper bound (the AR-vs-diffusion apples-to-apples\nnumber, ARCHITECTURE §9), estimated by Monte-Carlo over the diffusion time `t`.",
+      "type": "object",
+      "properties": {
+        "bits_per_token": {
+          "type": "number",
+          "format": "double"
+        },
+        "mc_samples": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "n_tokens": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "nats_per_token": {
+          "type": "number",
+          "format": "double"
+        },
+        "std_error": {
+          "description": "Monte-Carlo standard error over `mc_samples`.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "nats_per_token",
+        "bits_per_token",
+        "std_error",
+        "mc_samples",
+        "n_tokens"
+      ]
+    },
+    "TaskResult": {
+      "description": "One downstream-task score.",
+      "type": "object",
+      "properties": {
+        "metric": {
+          "description": "e.g. \"accuracy\".",
+          "type": "string"
+        },
+        "n": {
+          "description": "Number of scored examples.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "name",
+        "metric",
+        "value",
+        "n"
+      ]
+    },
+    "ThroughputResult": {
+      "description": "Decode throughput; MDLM's fixed-step forward passes make `speedup < 1` honestly\n(BD3LM is the payoff, P5). AR fields are None when the source is absent.",
+      "type": "object",
+      "properties": {
+        "ar_tokens_per_sec": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "diffusion_tokens_per_sec": {
+          "type": "number",
+          "format": "double"
+        },
+        "num_steps": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "speedup": {
+          "description": "diffusion / ar.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      },
+      "required": [
+        "diffusion_tokens_per_sec",
+        "num_steps"
+      ]
+    }
+  }
+}

@@ -15,6 +15,7 @@ dependencies = [
 [project.scripts]
 a2d-worker = "a2d_core.worker:main"
 a2d-sample = "a2d_core.sample_main:main"
+a2d-eval = "a2d_core.eval_main:main"
 
 [build-system]
 requires = ["hatchling"]

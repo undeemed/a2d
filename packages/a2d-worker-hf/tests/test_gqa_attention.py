@@ -141,6 +141,74 @@ def test_apply_transforms_via_resolved_caps_installs_gqa_patch(
 
 
 @pytest.mark.parametrize("family", FAMILIES)
+def test_gqa_padding_stays_masked_and_identity_holds_with_padding(
+    tiny_gqa: Callable[..., Any], family: str
+) -> None:
+    """Padding preservation (module contract): with a right-padded 2D attention_mask
+    the padded keys are strictly-future for the real queries, so alpha=1 must NOT
+    reveal them (perturbing a padded token leaves every real position's logits
+    untouched) while a perturbed real future token still reaches earlier positions;
+    and at alpha=0 the padded forward stays bit-identical to base."""
+    base = tiny_gqa(family, 0)
+    patched = tiny_gqa(family, 0)
+    patched.load_state_dict(base.state_dict())
+    state = AnnealState()
+    install_gqa_anneal_patch(patched, state)
+
+    vocab = int(base.config.vocab_size)
+    ids = torch.randint(0, vocab, (2, 8))
+    attention_mask = torch.ones(2, 8, dtype=torch.long)
+    attention_mask[0, 5:] = 0  # row 0 right-padded: positions 5..7 are padding
+
+    state.alpha = 0.0
+    with torch.no_grad():
+        base_logits = base(input_ids=ids, attention_mask=attention_mask).logits
+        patched_logits = patched(input_ids=ids, attention_mask=attention_mask).logits
+    assert torch.equal(base_logits, patched_logits)
+
+    state.alpha = 1.0
+    pad_perturbed = ids.clone()
+    pad_perturbed[0, 6] = (pad_perturbed[0, 6] + 1) % vocab
+    with torch.no_grad():
+        real = patched(input_ids=ids, attention_mask=attention_mask).logits[0, :5, :]
+        real_after_pad = patched(input_ids=pad_perturbed, attention_mask=attention_mask).logits[
+            0, :5, :
+        ]
+    assert torch.equal(real, real_after_pad)
+
+    # Guard against a vacuous pass: a real future token (position 4) must still be
+    # revealed to earlier real positions at alpha=1 under the same padded mask.
+    future_perturbed = ids.clone()
+    future_perturbed[0, 4] = (future_perturbed[0, 4] + 1) % vocab
+    with torch.no_grad():
+        real_after_future = patched(
+            input_ids=future_perturbed, attention_mask=attention_mask
+        ).logits[0, :4, :]
+    assert not torch.equal(real[:4, :], real_after_future)
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_gqa_reinstall_with_fresh_state_takes_effect(
+    tiny_gqa: Callable[..., Any], family: str
+) -> None:
+    """Re-installing on an already-patched model must swap in the NEW state (parity
+    with the GPT-2 seam's per-install re-tag) without double-wrapping: after a second
+    install at alpha=1, an earlier position sees a perturbed future token."""
+    model = tiny_gqa(family, 0)
+    install_gqa_anneal_patch(model, AnnealState(alpha=0.0))
+    install_gqa_anneal_patch(model, AnnealState(alpha=1.0))
+
+    vocab = int(model.config.vocab_size)
+    ids = torch.randint(0, vocab, (1, 8))
+    perturbed = ids.clone()
+    perturbed[:, 6] = (perturbed[:, 6] + 1) % vocab
+    with torch.no_grad():
+        a = model(ids).logits[:, 2, :]
+        b = model(perturbed).logits[:, 2, :]
+    assert not torch.equal(a, b)
+
+
+@pytest.mark.parametrize("family", FAMILIES)
 def test_gqa_patch_is_idempotent(tiny_gqa: Callable[..., Any], family: str) -> None:
     """Installing twice must not double-anneal: a second install is a no-op, so the
     alpha=0 causal behavior is preserved (an earlier position ignores a future token)."""

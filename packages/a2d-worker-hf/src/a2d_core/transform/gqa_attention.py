@@ -48,6 +48,11 @@ from a2d_core.transform.attention import AnnealState
 # wrapper as the "original" and anneal twice).
 _ORIG_ATTR = "_a2d_gqa_orig_update_causal_mask"
 
+# The live ``AnnealState`` on the decoder module, read by the wrapper on every call
+# and re-assigned by every install (parity with the GPT-2 seam's ``_a2d_anneal`` tag),
+# so re-installing with a fresh state swaps it in instead of being silently ignored.
+_STATE_ATTR = "_a2d_anneal"
+
 
 def _future_penalty(alpha: float, dtype: torch.dtype) -> float:
     """Additive pre-softmax penalty for a strictly-future cell at this ``alpha``.
@@ -79,7 +84,8 @@ def install_gqa_anneal_patch(model: Any, state: AnnealState) -> None:
 
     Requires ``attn_implementation="eager"`` (Decision 2, parity with the GPT-2 seam);
     forces ``use_cache=False`` (diffusion decodes the full canvas, ARCHITECTURE.md §7);
-    wraps the decoder's ``_update_causal_mask`` and tags it with the shared ``state``.
+    wraps the decoder's ``_update_causal_mask`` and tags the owner with ``state``,
+    re-assigned on every install so a later install swaps in its fresh state.
     """
     if model.config._attn_implementation != "eager":
         raise ValueError(
@@ -92,9 +98,10 @@ def install_gqa_anneal_patch(model: Any, state: AnnealState) -> None:
             "GQA anneal patch found no _update_causal_mask seam (not a RoPE-family causal model?)"
         )
     model.config.use_cache = False
+    setattr(owner, _STATE_ATTR, state)
 
     if hasattr(owner, _ORIG_ATTR):
-        return  # already patched; re-installing would double-anneal
+        return  # already wrapped; wrapping again would double-anneal
     orig = owner._update_causal_mask  # bound original, captured before we shadow it
     setattr(owner, _ORIG_ATTR, orig)
 
@@ -122,8 +129,9 @@ def install_gqa_anneal_patch(model: Any, state: AnnealState) -> None:
         if isinstance(attention_mask, torch.Tensor) and attention_mask.dim() == 2:
             real_key = (attention_mask != 0)[:, None, None, :kv_len]
             reveal = reveal & real_key
+        live_state: AnnealState = getattr(self, _STATE_ATTR)
         penalty = torch.full(
-            (), _future_penalty(state.alpha, dtype), dtype=dtype, device=base_mask.device
+            (), _future_penalty(live_state.alpha, dtype), dtype=dtype, device=base_mask.device
         )
         return torch.where(reveal, penalty, base_mask)
 

@@ -17,7 +17,8 @@ from typing import Any
 import torch
 
 from a2d_core.sample import register
-from a2d_core.transform.attention import AnnealState, install_anneal_patch
+from a2d_core.transform.apply import apply_transforms, resolve_capabilities
+from a2d_core.transform.attention import AnnealState
 
 
 @register("mdlm")
@@ -35,14 +36,16 @@ def denoise(
 
     ``prompt_ids`` is the untouched prefix; the ``canvas_len - len(prompt_ids)``
     suffix positions start masked and are filled by iterative confidence reveal.
-    Installs the anneal patch at ``alpha=1`` so attention is bidirectional.
+    Installs the model's resolved attention transform (GPT-2 -> ``attn.full``, RoPE
+    family -> ``attn.gqa``) at ``alpha=1`` so attention is bidirectional.
     """
     prompt_len = len(prompt_ids)
     if canvas_len < prompt_len:
         raise ValueError(f"canvas_len {canvas_len} < prompt length {prompt_len}")
     num_masked = canvas_len - prompt_len
 
-    install_anneal_patch(model, AnnealState(alpha=1.0))  # bidirectional (Decision 9)
+    # Bidirectional (Decision 9), via the same capability dispatch as the worker.
+    apply_transforms(model, resolve_capabilities(model), AnnealState(alpha=1.0))
     dev = torch.device(device)
     model.to(dev).eval()
 

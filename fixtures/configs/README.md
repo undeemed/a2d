@@ -30,6 +30,7 @@ file (Decision 7). See `docs/SPEC-HANDOFF.md` section 3.3 and `docs/PLAN-PHASE1.
 | `pythia`       | EleutherAI/pythia-1.4b          | gpt_neox     | supported_inferred   | - (partial rope is fidelity, non-block)|
 | `llama`        | NousResearch/Meta-Llama-3.1-8B  | llama        | supported            | -                                      |
 | `qwen2`        | Qwen/Qwen2.5-7B                 | qwen2        | supported            | - (see use_sliding_window note)        |
+| `gemma`        | unsloth/gemma-2b (Gemma 1)      | gemma        | supported            | - (full attn: no sliding_window)       |
 | `olmoe`        | allenai/OLMoE-1B-7B-0924        | olmoe        | supported            | - (MoE, no shared experts)             |
 | `mistral-v0.1` | mistralai/Mistral-7B-v0.1       | mistral      | unsupported          | attn.swa                               |
 | `gemma2`       | google/gemma-2-9b               | gemma2       | unsupported          | attn.swa (softcap is fidelity)         |
@@ -47,6 +48,11 @@ file (Decision 7). See `docs/SPEC-HANDOFF.md` section 3.3 and `docs/PLAN-PHASE1.
 - **`qwen2` proves the SWA guard's negative case.**
   It sets `sliding_window: 131072` but `use_sliding_window: false`, so it is NOT `attn.swa` and stays
   supported.
+- **`gemma` (Gemma 1) is convertible; `gemma2`/`gemma3` are not.**
+  Gemma 1 has NO sliding window (`sliding_window` absent), so it stays full attention and passes the gate
+  (`attn.gqa` from MQA `num_key_value_heads: 1`, `pos.rope`, `ffn.dense`, `norm.rms`). Gemma 2/3 add SWA and
+  are gated out. Gemma's independent `head_dim: 256` and sqrt(hidden) embedding scaling are HF-forward
+  concerns and never touch the capability set.
 - **`gemma2` softcap is fidelity, not a blocker.**
   It carries `attn_logit_softcapping: 50.0` / `final_logit_softcapping: 30.0` (recorded as
   `head.logit-softcap`, non-blocking); the only reason is `attn.swa`.

@@ -145,7 +145,12 @@ def _convert(job: ConversionJob, emit: Callable[[dict[str, Any]], None]) -> int:
 
     from a2d_core.data import DATA
     from a2d_core.train import continual
-    from a2d_core.transform.apply import apply_transforms, load_model, resolve_mask_token
+    from a2d_core.transform.apply import (
+        apply_transforms,
+        load_model,
+        resolve_capabilities,
+        resolve_mask_token,
+    )
     from a2d_core.transform.attention import AnnealState
     from a2d_core.transform.identity import check_identity
 
@@ -165,13 +170,16 @@ def _convert(job: ConversionJob, emit: Callable[[dict[str, Any]], None]) -> int:
     emit(progress("grow", 2, total))
     mask_token_id = resolve_mask_token(model, tokenizer, cfg.mask_token)
 
-    # 4. patch: install the annealed attention seam at alpha=0 (Decision 2). P2 is the
-    #    dense GPT-2 happy path, so the conversion-blocking capability is attn.full.
-    # ponytail: fixed capability set for the dense happy path; feed the manifest's
-    #   model_spec.capabilities through the job when P6 adds SWA/sink handlers.
+    # 4. patch: install the annealed attention seam at alpha=0 (Decision 2). The seam
+    #    is resolved from the model's own eager causal structure: GPT-2's self.bias
+    #    (attn.full) vs the RoPE family's _update_causal_mask mask (attn.gqa - Gemma/
+    #    Qwen2/Llama). The ConversionJob carries no capability set, so the worker picks
+    #    the handler honestly from the model itself.
+    # ponytail: attention seam only; feed the manifest's model_spec.capabilities
+    #   through the job when P6 adds SWA/sink handlers keyed off config-only fields.
     emit(progress("patch", 3, total))
     state = AnnealState(alpha=0.0)
-    apply_transforms(model, ["attn.full"], state)
+    apply_transforms(model, resolve_capabilities(model), state)
 
     # 5. identity gate (D13, HARD stop): base vs patched@0 on a clean probe. Fail =>
     #    emit the gate result + job_failed and return with NOTHING trained.

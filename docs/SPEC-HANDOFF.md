@@ -216,8 +216,10 @@ a2d/
       src/a2d_core/
         ingest/                 # ◄ EXTENSION POINT: format normalizers (copy-on-normalize)
         transform/
-          patch.py              # attention→bidirectional, shift removal, anneal scheduler
-          handlers/             # ◄ EXTENSION POINT: capability handlers (attn.full, ffn.moe, …)
+          attention.py          # GPT-2 self.bias seam (attn.full) + AnnealState/schedule
+          gqa_attention.py      # RoPE-family _update_causal_mask seam (attn.gqa)
+          apply.py              # load model, resolve capabilities from its seam, apply handlers
+          handlers/             # ◄ EXTENSION POINT: capability handlers (attn.full, attn.gqa, ffn.moe, …)
         objectives/             # ◄ EXTENSION POINT: mdlm.py, bd3lm.py  (corrupt/loss iface)
         data/                   # local corpus readers + streaming, packing, noising collators
         train/                  # continual + finetune loops; checkpointing; MoE router monitor
@@ -255,6 +257,7 @@ Dependencies: linear, except P4/P5 both depend on P2 (P3 strongly recommended fi
 **Goal:** first real conversion, end to end, locally.
 **Scope:** `a2d_core` implements ARCHITECTURE.md M0 on GPT-2: materialize, patch (mask annealing, shift removal), **identity gate as a hard pre-training stop** (live base-vs-patched logit comparison), MDLM objective, short continual pretrain on `--data`, checkpointing + `a2d resume`; terminal progress rendering.
 **Exit:** GPT-2 → diffusion checkpoint via `a2d convert` on one local GPU; identity gate enforced; `a2d sample` produces coherent text; the run dir matches §4.3.
+**Post-P3 extension (shipped):** the dense conversion core also covers the GQA+RoPE family (Gemma 1 / Qwen2 / Llama) via a second attention-seam handler (`attn.gqa` - the §3.3 "new attention variant" row); the worker resolves the seam structurally from the loaded model, so the `ConversionJob` carries no capability set.
 
 ### Phase 3 — Evaluation
 **Goal:** trustworthy results.

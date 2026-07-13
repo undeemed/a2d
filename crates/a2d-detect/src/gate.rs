@@ -4,8 +4,9 @@ use crate::spec::{Capability, ModelSpec, Verdict};
 
 /// Reduce a spec to a verdict: collect the reasons of any blocking capability,
 /// emitted in canonical declaration order (not the order caps were discovered),
-/// so GPT-OSS always yields `[attn.swa, attn.sink, weights.mxfp4]`. Fidelity caps
-/// are structurally excluded (`blocking() == false`).
+/// so GPT-OSS always yields `[attn.sink, weights.mxfp4]` (its `attn.swa` is now a
+/// supported, non-blocking cap). Fidelity caps are structurally excluded
+/// (`blocking() == false`).
 pub fn gate(spec: &ModelSpec) -> Verdict {
     let reasons: Vec<String> = Capability::ALL
         .into_iter()
@@ -51,8 +52,8 @@ mod tests {
         let spec = spec_with(
             vec![
                 Capability::WeightsMxfp4,
+                Capability::AttnMla,
                 Capability::AttnSink,
-                Capability::AttnSwa,
             ],
             true,
         );
@@ -60,8 +61,8 @@ mod tests {
             Verdict::Unsupported { reasons } => assert_eq!(
                 reasons,
                 vec![
-                    Capability::AttnSwa.reason().to_string(),
                     Capability::AttnSink.reason().to_string(),
+                    Capability::AttnMla.reason().to_string(),
                     Capability::WeightsMxfp4.reason().to_string(),
                 ]
             ),
@@ -92,12 +93,12 @@ mod tests {
     fn fidelity_cap_never_appears_in_reasons() {
         // One blocking + one fidelity cap: only the blocking one yields a reason.
         let spec = spec_with(
-            vec![Capability::AttnSwa, Capability::HeadLogitSoftcap],
+            vec![Capability::AttnSink, Capability::HeadLogitSoftcap],
             false,
         );
         match gate(&spec) {
             Verdict::Unsupported { reasons } => {
-                assert_eq!(reasons, vec![Capability::AttnSwa.reason().to_string()]);
+                assert_eq!(reasons, vec![Capability::AttnSink.reason().to_string()]);
                 assert!(!reasons.iter().any(|r| r.contains("head.logit-softcap")));
             }
             other => panic!("expected unsupported, got {other:?}"),

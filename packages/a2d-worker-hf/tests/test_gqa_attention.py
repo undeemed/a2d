@@ -3,8 +3,12 @@ at ``alpha=0`` (bit-identical to base) and the ``alpha=1`` bidirectional-behavio
 guard, plus the worker's structural handler dispatch.
 
 Mirrors ``test_identity``/``test_bidir`` (GPT-2) for the RoPE family, whose eager
-seam is the 4D mask ``_update_causal_mask`` builds, not GPT-2's ``self.bias``. All
-hermetic: tiny random-weight configs on CPU float32, no network.
+seam is the 4D mask ``_update_causal_mask`` builds, not GPT-2's ``self.bias``. Also
+covers the single-mask windowed flavor (Mistral v0.1), whose sliding window is folded
+into that same model-level mask: the shared reveal must open its far-past window
+alongside the strictly-future cells, so a converted Mistral is never silently still
+windowed at ``alpha=1``. All hermetic: tiny random-weight configs on CPU float32, no
+network.
 """
 
 from __future__ import annotations
@@ -20,6 +24,20 @@ from a2d_core.transform.gqa_attention import install_gqa_anneal_patch
 from a2d_core.transform.identity import IDENTITY_TOLERANCE, check_identity
 
 FAMILIES = ["gemma", "llama", "qwen2"]
+
+
+def _shift(
+    model: Any, state: AnnealState, ids: torch.Tensor, q: int, k: int, alpha: float
+) -> float:
+    """Max |Δ| of position ``q``'s logits when token ``k`` is perturbed, at ``alpha``."""
+    state.alpha = alpha
+    perturbed = ids.clone()
+    vocab = int(model.config.vocab_size)
+    perturbed[:, k] = (perturbed[:, k] + 1) % vocab
+    with torch.no_grad():
+        base = model(ids).logits[:, q, :]
+        after = model(perturbed).logits[:, q, :]
+    return float((base - after).abs().max().item())
 
 
 @pytest.mark.parametrize("family", FAMILIES)
@@ -226,6 +244,87 @@ def test_gqa_patch_is_idempotent(tiny_gqa: Callable[..., Any], family: str) -> N
         a = model(ids).logits[:, 2, :]
         b = model(perturbed).logits[:, 2, :]
     assert torch.equal(a, b)
+
+
+def test_mistral_windowed_patched_at_alpha0_is_bit_identical_to_base(
+    tiny_mistral: Callable[..., Any],
+) -> None:
+    """D13 gate for the single-mask windowed flavor: with an ACTIVE sliding window,
+    patched@alpha=0 logits equal base to 0.0 (the generalized reveal must leave every
+    base-masked cell - future AND far-past window - at exactly finfo.min)."""
+    base = tiny_mistral()
+    patched = tiny_mistral()
+    patched.load_state_dict(base.state_dict())  # guarantee identical weights
+    # Sanity: no per-layer sliding seam, so dispatch stays on the shared mask seam.
+    assert not any(getattr(m, "is_sliding", False) for m in patched.modules())
+    assert resolve_capabilities(patched) == ["attn.gqa"]
+    state = AnnealState()
+    install_gqa_anneal_patch(patched, state)
+
+    base_vocab = int(base.config.vocab_size)
+    probe = torch.randint(0, base_vocab, (2, 8))
+    result = check_identity(base, patched, state, probe, base_vocab)
+
+    assert result.passed
+    assert result.max_abs_diff == 0.0  # eager + fp32 is exact, not merely within tolerance
+
+
+def test_mistral_window_and_future_open_at_alpha1_not_alpha0(
+    tiny_mistral: Callable[..., Any],
+) -> None:
+    """GUARD (review: swa-mistral-silent-window): a converted Mistral must not stay
+    silently windowed. With window 2, query 3 sees only keys {2, 3} at alpha=0: an
+    in-window key moves its logits even at alpha=0 (non-vacuity), while a far-past
+    out-of-window key AND a strictly-future key move them at alpha=1 only."""
+    model = tiny_mistral(sliding_window=2)
+    state = AnnealState()
+    install_gqa_anneal_patch(model, state)
+    ids = torch.randint(0, int(model.config.vocab_size), (1, 8))
+
+    # In-window past token (k=2) reaches q=3 already at alpha=0: guards against vacuity.
+    assert _shift(model, state, ids, q=3, k=2, alpha=0.0) > 1e-6
+
+    # Far-past token outside the window (k=0): windowed out at alpha=0, revealed at alpha=1.
+    assert _shift(model, state, ids, q=3, k=0, alpha=0.0) == 0.0
+    assert _shift(model, state, ids, q=3, k=0, alpha=1.0) > 1e-6
+
+    # Strictly-future token (k=6): causally masked at alpha=0, revealed at alpha=1.
+    assert _shift(model, state, ids, q=3, k=6, alpha=0.0) == 0.0
+    assert _shift(model, state, ids, q=3, k=6, alpha=1.0) > 1e-6
+
+
+def test_mistral_padding_stays_masked_at_alpha1(tiny_mistral: Callable[..., Any]) -> None:
+    """The generalized reveal opens ONLY real keys: with a right-padded 2D mask a
+    perturbed padded token leaves every real position's logits untouched at alpha=1,
+    while a real out-of-window token still reaches the query."""
+    model = tiny_mistral(sliding_window=2)
+    state = AnnealState()
+    install_gqa_anneal_patch(model, state)
+
+    vocab = int(model.config.vocab_size)
+    ids = torch.randint(0, vocab, (2, 8))
+    attention_mask = torch.ones(2, 8, dtype=torch.long)
+    attention_mask[0, 5:] = 0  # row 0 right-padded: positions 5..7 are padding
+
+    state.alpha = 1.0
+    pad_perturbed = ids.clone()
+    pad_perturbed[0, 6] = (pad_perturbed[0, 6] + 1) % vocab
+    with torch.no_grad():
+        real = model(input_ids=ids, attention_mask=attention_mask).logits[0, :5, :]
+        real_after_pad = model(input_ids=pad_perturbed, attention_mask=attention_mask).logits[
+            0, :5, :
+        ]
+    assert torch.equal(real, real_after_pad)
+
+    # Guard against a vacuous pass: a real out-of-window token (position 0) must still
+    # be revealed to a later real position at alpha=1 under the same padded mask.
+    window_perturbed = ids.clone()
+    window_perturbed[0, 0] = (window_perturbed[0, 0] + 1) % vocab
+    with torch.no_grad():
+        real_after = model(input_ids=window_perturbed, attention_mask=attention_mask).logits[
+            0, 4, :
+        ]
+    assert not torch.equal(real[4, :], real_after)
 
 
 if __name__ == "__main__":

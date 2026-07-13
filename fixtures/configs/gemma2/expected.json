@@ -1,1 +1,1 @@
-{ "verdict": "unsupported", "reasons": ["attn.swa"], "weights": "missing" }
+{ "verdict": "supported_inferred", "weights": "missing" }

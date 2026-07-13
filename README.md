@@ -6,7 +6,7 @@
 **Convert open-weight autoregressive LLMs into diffusion language models. Locally, with one command.**
 
 > **Status: Phases 0-3 landed; the dense conversion core is real.**
-> Detect & gate (config-only, no GPU), the conversion recipe (GPT-2 plus the GQA+RoPE family: Gemma 1, Qwen2, Llama), the identity gate, sampling, and the eval harness run end to end.
+> Detect & gate (config-only, no GPU), the conversion recipe (GPT-2, the GQA+RoPE family: Gemma 1, Qwen2, Llama, and the sliding-window family: Gemma 2/3, Mistral), the identity gate, sampling, and the eval harness run end to end.
 > MoE is next on the [roadmap](#roadmap); large real-model GPU conversions are still ahead.
 > Contributions welcome - see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -35,7 +35,8 @@ New model drops that fit the family should work day-one with zero a2d code: dete
 |----------|------------------------|
 | Dense AR transformers (GPT-2, Pythia, Llama, Qwen, Gemma 1…) | SSM/Mamba (`paradigm`) |
 | MoE AR transformers (OLMoE, Qwen-MoE…) | MLA-attention models (`attn.mla`) — until a handler lands |
-| Sliding-window / attention-sink models (Mistral, Gemma 2/3, GPT-OSS) — *planned, capability-gated* | ONNX-only exports (`format`) |
+| Sliding-window models (Mistral, Gemma 2/3…) | Attention-sink / MXFP4-quantized models (GPT-OSS) — *planned, capability-gated* |
+|  | ONNX-only exports (`format`) |
 
 ## How it works (30 seconds)
 
@@ -59,7 +60,7 @@ Weights must already be downloaded — a2d never fetches models. Third-party mod
 
 ## Roadmap
 
-Phased, no dates: walking skeleton → detection & gate (no GPU) → dense conversion (GPT-2, then Gemma 1/Qwen2/Llama) → eval harness → MoE (OLMoE) → block diffusion & fast sampling → hard architectures (SWA/sinks/quantized: Mistral, Gemma 2/3, GPT-OSS) → polish. Details and exit criteria: [`docs/SPEC-HANDOFF.md`](docs/SPEC-HANDOFF.md).
+Phased, no dates: walking skeleton → detection & gate (no GPU) → dense conversion (GPT-2, then Gemma 1/Qwen2/Llama) → eval harness → MoE (OLMoE) → block diffusion & fast sampling → hard architectures (SWA landed: Mistral, Gemma 2/3; sinks/quantized GPT-OSS remain) → polish. Details and exit criteria: [`docs/SPEC-HANDOFF.md`](docs/SPEC-HANDOFF.md).
 
 ## Prior art & credit
 

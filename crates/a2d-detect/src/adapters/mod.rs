@@ -6,6 +6,7 @@
 //! (open-closed, SPEC-HANDOFF section 3.3).
 
 mod gemma;
+mod gemma3;
 mod gpt2;
 mod gpt_oss;
 mod llama;

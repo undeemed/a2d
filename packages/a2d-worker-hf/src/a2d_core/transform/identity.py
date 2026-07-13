@@ -7,7 +7,8 @@ are sliced to ``base_vocab`` before comparing (Decision 7 / Risk 3).
 
 This gate CANNOT prove the patch reaches the model's causality - a no-op seam that
 leaves the model fully causal passes it too - so bidirectionality is proven separately
-by ``test_bidir`` (GPT-2) and ``test_gqa_attention`` (RoPE family) (Decision 2).
+by ``test_bidir`` (GPT-2), ``test_gqa_attention`` (RoPE family), and
+``test_swa_attention`` (sliding-window Gemma 2/3) (Decision 2).
 """
 
 from __future__ import annotations

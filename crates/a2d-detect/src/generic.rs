@@ -147,8 +147,9 @@ pub fn detect(cfg: &RawConfig) -> ModelSpec {
             Capability::AttnFull
         });
         // SWA guard (the Qwen2 gotcha): window present AND > 0 AND use_sliding_window != false.
-        // Accepts Qwen2.5 (window=131072, use_sliding_window=false) as NOT swa; rejects
-        // Mistral-v0.1 (4096, no toggle), Gemma-2/3, GPT-OSS.
+        // Classifies Qwen2.5 (window=131072, use_sliding_window=false) as NOT swa; flags
+        // Mistral-v0.1 (4096, no toggle), Gemma-2/3, GPT-OSS as attn.swa (supported,
+        // non-blocking since the worker's swa handler landed).
         if sliding_window.is_some_and(|w| w > 0)
             && cfg.bool_opt(&["use_sliding_window"]) != Some(false)
         {

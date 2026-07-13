@@ -12,7 +12,7 @@ It predicts the next token left-to-right, and a **causal mask** enforces the rul
 2. **Diffusion LM (MDLM)** masks random tokens, predicts them all at once in **both directions** (bidirectional), and refines over a few passes.
 The block of positions it works on is the **canvas**; turning masks back into tokens over N steps is **denoising**.
 
-3. **a2d's whole job** is the conversion between them: take AR weights, **anneal** the causal mask off (the `attn.full` / `attn.gqa` transforms), and briefly retrain with a masking objective (**MDLM**).
+3. **a2d's whole job** is the conversion between them: take AR weights, **anneal** the causal mask off (the `attn.full` / `attn.gqa` / `attn.swa` transforms), and briefly retrain with a masking objective (**MDLM**).
 One transform per attention seam plus one objective. That is the core.
 
 Everything else in the vocabulary exists to decide *which models a2d will touch* - the complexity lives in honest **detection**, not in the small **conversion**.
@@ -24,13 +24,13 @@ Everything else in the vocabulary exists to decide *which models a2d will touch*
 - **Bidirectional** - a token sees left *and* right. What diffusion needs.
 - **MDLM** - the masked-diffusion objective a2d uses: mask a random fraction, predict them, repeat.
 - **Canvas** - the span of positions a diffusion model denoises (its workspace).
-- **Anneal (`attn.full`, `attn.gqa`)** - a2d's trick: slowly turn the causal mask off so AR weights adapt to bidirectional. One transform per attention seam: GPT-2 bakes causality per layer (`attn.full`); the RoPE family (Gemma 1 / Qwen2 / Llama) routes it through one shared mask (`attn.gqa`).
+- **Anneal (`attn.full`, `attn.gqa`, `attn.swa`)** - a2d's trick: slowly turn the causal mask off so AR weights adapt to bidirectional. One transform per attention seam: GPT-2 bakes causality per layer (`attn.full`); the RoPE family (Gemma 1 / Qwen2 / Llama / Mistral) routes it through one shared mask (`attn.gqa`); Gemma 2/3 add a per-layer sliding window on top of that mask (`attn.swa`).
 - **Identity gate** - hard correctness check: at `anneal=0` the patched model must match the base model's logits, or convert aborts.
 - **GQA** - grouped-query attention: fewer key/value heads than query heads (a memory trick). The mechanism rides along in HF's forward; the `attn.gqa` tag also names the RoPE-family anneal transform (see Anneal).
 - **RoPE** - rotary position encoding (modern position scheme). Passthrough.
 - **RMSNorm** - a normalization flavor. Passthrough.
 - **Logit softcap** - squashes output logits (Gemma 2). Fidelity note only.
-- **SWA (sliding window)** - a token only sees the nearest N tokens. a2d refuses today (Phase 6).
+- **SWA (sliding window)** - a token only sees the nearest N tokens. Converted: the `attn.swa` transform anneals the window open along with the causal mask (Gemma 2/3; Mistral's single-mask window rides `attn.gqa`).
 - **Attention sink** - first tokens are always attended to. Refuse today (Phase 6).
 - **MLA** - DeepSeek's compressed latent attention. Refuse (out of scope).
 - **SSM / Mamba** - not attention at all, a different sequence model. Refuse (out of scope).
@@ -44,7 +44,7 @@ Everything else in the vocabulary exists to decide *which models a2d will touch*
 | Bucket | Tags | What a2d does |
 |---|---|---|
 | **Free (passthrough)** | `pos.rope`, `pos.rope.partial`, `pos.learned`, `norm.rms`, `norm.sandwich`, `head.logit-softcap`, `weights.bf16`, `ffn.dense` | Nothing. Detected, ride along, HF's forward handles them. No conversion work. |
-| **a2d must handle (blocking)** | `attn.full` (done - GPT-2), `attn.gqa` (done - Gemma 1 / Qwen2 / Llama), `ffn.moe` (Phase 4), `attn.swa` / `attn.sink` / `weights.mxfp4` / `weights.gptq` (Phase 6), `attn.mla` / `paradigm.ssm` (out of scope) | Convert it, or the gate says `unsupported` honestly. Exactly these few flags are the "hard" list. |
+| **a2d must handle (blocking)** | `attn.full` (done - GPT-2), `attn.gqa` (done - Gemma 1 / Qwen2 / Llama / Mistral), `attn.swa` (done - Gemma 2/3), `ffn.moe` (Phase 4), `attn.sink` / `weights.mxfp4` / `weights.gptq` (Phase 6), `attn.mla` / `paradigm.ssm` (out of scope) | Convert it, or the gate says `unsupported` honestly. Exactly these few flags are the "hard" list. |
 | **DiffusionGemma-advanced** | block diffusion, encoder-decoder split, entropy-bounded denoising, adaptive stopping | Not built, not owed. Phase 5+ horizon, not this sprint. |
 
 The middle row is the only place real work lives, and most of it a2d *refuses* rather than implements.
@@ -60,7 +60,8 @@ Phases are ordered; `P4` and `P5` both only need `P2` and can run in parallel (`
 - [x] **P3 - Evaluation.** MDLM likelihood bound, downstream tasks, throughput vs AR; `eval/report.json` + `--html`.
 - [ ] **P4 - MoE.** OLMoE end to end; `ffn.moe` handler; router-health telemetry. **<- next**
 - [ ] **P5 - Objectives & sampling speed.** BD3LM (block diffusion) + block-parallel sampler. The DiffusionGemma recipe.
-- [ ] **P6 - Capability expansion (boss level).** `attn.swa` / `attn.sink` handlers + quant dequant; unlocks Mistral, Gemma 2/3, GPT-OSS.
+- [ ] **P6 - Capability expansion (boss level).** `attn.sink` handler + quant dequant; unlocks GPT-OSS.
+  The `attn.swa` half shipped early (after P3): Gemma 2/3's per-layer window anneals open via the `attn.swa` handler, Mistral's single-mask window rides `attn.gqa`, and both now pass the gate.
 - [ ] **P7 - Polish & optional platform mode.**
 
 Build surface right now is small: dense (soon MoE) model + flip attention bidirectional + mask-and-predict.

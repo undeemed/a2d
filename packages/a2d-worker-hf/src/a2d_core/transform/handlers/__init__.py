@@ -23,3 +23,4 @@ register = TRANSFORM.register
 # Import submodules for their self-registration side effect (registry-table edit).
 from a2d_core.transform.handlers import full_attention as full_attention  # noqa: E402
 from a2d_core.transform.handlers import gqa_attention as gqa_attention  # noqa: E402
+from a2d_core.transform.handlers import swa_attention as swa_attention  # noqa: E402

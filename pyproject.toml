@@ -38,8 +38,12 @@ strict = true
 files = ["packages"]
 exclude = "packages/a2d-contracts/src/a2d_contracts/models"
 
-# transformers ships no py.typed marker; the worker's transform layer patches its
-# GPT-2 eager seam directly, so treat it as untyped rather than erroring.
+# transformers 4.51.3 ships an (empty) py.typed marker, but the worker's transform
+# layer patches HF's eager attention seams directly with runtime-only knowledge mypy
+# cannot follow, so keep treating transformers as untyped (Any). `follow_imports=skip`
+# is what makes that hold now that the marker exists - `ignore_missing_imports` alone
+# no longer suffices. tokenizers is treated the same way.
 [[tool.mypy.overrides]]
-module = ["transformers.*", "tokenizers.*"]
+module = ["transformers", "transformers.*", "tokenizers", "tokenizers.*"]
 ignore_missing_imports = true
+follow_imports = "skip"

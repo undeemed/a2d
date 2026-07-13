@@ -16,7 +16,7 @@
 
 ### Explicitly out of scope (for now)
 - **Cross-family** conversion (dense → MoE or MoE → dense).
-- **Exotic attention:** sliding-window attention, attention sinks, hybrid/SSM layers. *This is what makes GPT-OSS the "boss level" — it has SWA + sinks + native MXFP4. The introspect gate (§5) rejects it cleanly until we add those capabilities.*
+- **Exotic attention:** attention sinks, hybrid/SSM layers (sliding-window attention was gated out here originally; it has since landed as the `attn.swa` capability). *This is what makes GPT-OSS the "boss level" — it has SWA + sinks + native MXFP4. The introspect gate (§5) rejects it cleanly until we add the remaining capabilities.*
 - Multimodal towers, vision adapters.
 - Quantization-aware conversion (train in bf16; quantize after).
 
@@ -115,7 +115,7 @@ An adapter reads an HF model's config and module tree and emits a normalized des
 class AttentionSpec:
     pos_emb: Literal["rope", "yarn", "alibi", "learned", "none"]
     is_causal: bool
-    window: int | None          # not None  => sliding-window  => UNSUPPORTED v1
+    window: int | None          # not None  => sliding-window  (was UNSUPPORTED v1; attn.swa landed)
     attn_sink: bool             # True       => attention sinks => UNSUPPORTED v1
     n_heads: int
     n_kv_heads: int             # GQA/MQA
@@ -144,7 +144,7 @@ class ModelSpec:
     reasons: list[str]          # why unsupported, if so
 ```
 
-The gate is mechanical: `supported = (window is None) and (not attn_sink) and (ffn.family in {dense, moe})`. GPT-OSS fails on `window` + `attn_sink` and is rejected with a readable reason — no silent breakage. Adding GPT-OSS later = implement those two capabilities and flip the gate, not a rewrite.
+The gate is mechanical: `supported = (window is None) and (not attn_sink) and (ffn.family in {dense, moe})`. GPT-OSS fails on `window` + `attn_sink` and is rejected with a readable reason — no silent breakage. Adding GPT-OSS later = implement those two capabilities and flip the gate, not a rewrite. (The `window` half has since happened: the `attn.swa` handler landed and its gate flipped, so GPT-OSS's remaining reasons are the sink and its MXFP4 weights.)
 
 The pipeline **detects** `family`; the user never sets it. Architecture-preserving means `target.family == source.family` by construction.
 
@@ -210,7 +210,7 @@ sample:
 | **M1 — Eval harness** | NLL bound + 2 downstream tasks + tokens/sec vs AR | Honest, repeatable comparison |
 | **M2 — MoE** | Qwen-MoE/OLMoE adapter + router monitor | Routing stays balanced through annealing |
 | **M3 — BD3LM + block sampling** | Block objective + parallel denoiser | The speed payoff (the DiffusionGemma selling point) |
-| **Future — boss level** | SWA + attention-sink capability → GPT-OSS; cross-family; quant-aware | Gated off today by the introspect check |
+| **Future — boss level** | Attention-sink capability → GPT-OSS (the SWA half landed: Mistral, Gemma 2/3 convert); cross-family; quant-aware | Gated off today by the introspect check |
 
 ---
 

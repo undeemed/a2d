@@ -218,8 +218,9 @@ a2d/
         transform/
           attention.py          # GPT-2 self.bias seam (attn.full) + AnnealState/schedule
           gqa_attention.py      # RoPE-family _update_causal_mask seam (attn.gqa)
+          swa_attention.py      # Gemma 2/3 per-layer sliding-window seam (attn.swa)
           apply.py              # load model, resolve capabilities from its seam, apply handlers
-          handlers/             # ◄ EXTENSION POINT: capability handlers (attn.full, attn.gqa, ffn.moe, …)
+          handlers/             # ◄ EXTENSION POINT: capability handlers (attn.full, attn.gqa, attn.swa, ffn.moe, …)
         objectives/             # ◄ EXTENSION POINT: mdlm.py, bd3lm.py  (corrupt/loss iface)
         data/                   # local corpus readers + streaming, packing, noising collators
         train/                  # continual + finetune loops; checkpointing; MoE router monitor
@@ -252,6 +253,7 @@ Dependencies: linear, except P4/P5 both depend on P2 (P3 strongly recommended fi
 **Goal:** the tool's spine, shippable without a single GPU-hour.
 **Scope:** `a2d-detect` (GenericAdapter + first known adapters: gpt2, llama, qwen2, olmoe); capability taxonomy; gate with reasons; `a2d detect` output (spec, verdict, plan, missing-weights hint per D11); ingest normalizers (safetensors pass-through, pickle→safetensors); fixture corpus + parameterized gate tests.
 **Exit:** the curated corpus classifies correctly — GPT-2/Pythia/Llama/Qwen-dense/OLMoE accepted; Mistral & Gemma-2/3 (`attn.swa`), GPT-OSS (`attn.swa`+`attn.sink`+`weights.mxfp4`), Mamba (`paradigm`) rejected with correct reasons; config-only detect works on a weights-less dir.
+**Superseded (post-P3):** the `attn.swa` handler shipped (see Phase 6), flipping that capability to supported/non-blocking - the corpus now expects Mistral & Gemma-2/3 to pass the gate and GPT-OSS to be rejected for `attn.sink`+`weights.mxfp4` alone.
 
 ### Phase 2 — Conversion core: dense happy path
 **Goal:** first real conversion, end to end, locally.
@@ -278,6 +280,7 @@ Dependencies: linear, except P4/P5 both depend on P2 (P3 strongly recommended fi
 **Goal:** the hard architectures, purely additively.
 **Scope:** `attn.swa` and `attn.sink` transform handlers (bidirectionalizing windowed/sink attention is recipe work, not just HF support) + conformance tests; `weights.mxfp4`/`weights.gptq` dequant ingest; the gate flips automatically — Mistral, Gemma 2/3, then GPT-OSS light up with **zero changes elsewhere**.
 **Exit:** one SWA model converts end to end; GPT-OSS passes detect→convert (compute permitting). The playbook (§3.3) validated on its hardest case.
+**Partially shipped (post-P3):** the `attn.swa` handler landed - Gemma 2/3's per-layer window anneals open over the same shared state as the future-reveal, Mistral v0.1's single-mask window rides `attn.gqa`, and the gate flipped exactly as designed (Mistral & Gemma 2/3 now pass detect; GPT-OSS's remaining reasons are `attn.sink`+`weights.mxfp4`). Remaining: the `attn.sink` handler and dequant ingest for GPT-OSS.
 
 ### Phase 7 — Polish & (optional) platform mode
 **Goal:** great local UX; open the door to the platform track if wanted.

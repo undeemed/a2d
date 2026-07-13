@@ -170,7 +170,6 @@ impl Capability {
     pub fn reason(self) -> &'static str {
         match self {
             Capability::ParadigmSsm => "state-space model, not transformer paradigm (paradigm.ssm)",
-            Capability::AttnSwa => "sliding-window attention unsupported (attn.swa)",
             Capability::AttnSink => "attention sink unsupported (attn.sink)",
             Capability::AttnMla => "multi-head latent attention unsupported (attn.mla)",
             Capability::WeightsMxfp4 => "MXFP4 quantization unsupported (weights.mxfp4)",
@@ -179,15 +178,18 @@ impl Capability {
         }
     }
 
-    /// True ONLY for the six caps Phase 1 cannot handle. Every implemented
-    /// conversion cap and every fidelity cap returns false, so fidelity tags
-    /// cannot block by construction. Flipping AttnSwa/AttnSink here later is the
-    /// entire "enable GPT-OSS" change (ARCHITECTURE 5's "flip the gate").
+    /// True ONLY for the five caps Phase 1 cannot handle. Every implemented
+    /// conversion cap - now including `AttnSwa`, whose sliding-window anneal the
+    /// worker performs for both flavors (per-layer Gemma 2/3 via the `attn.swa`
+    /// handler; single-mask Mistral/Qwen2 via the shared `attn.gqa` mask reveal) -
+    /// and every fidelity cap
+    /// returns false, so fidelity tags cannot block by construction. Flipping
+    /// `AttnSink` here later is the remaining "enable GPT-OSS" change
+    /// (ARCHITECTURE 5's "flip the gate").
     pub fn blocking(self) -> bool {
         matches!(
             self,
             Capability::ParadigmSsm
-                | Capability::AttnSwa
                 | Capability::AttnSink
                 | Capability::AttnMla
                 | Capability::WeightsMxfp4
@@ -770,7 +772,7 @@ mod tests {
     }
 
     #[test]
-    fn exactly_six_caps_block_and_carry_a_reason() {
+    fn exactly_five_caps_block_and_carry_a_reason() {
         let blocking: Vec<Capability> = Capability::ALL
             .into_iter()
             .filter(|c| c.blocking())
@@ -779,7 +781,6 @@ mod tests {
             blocking,
             vec![
                 Capability::ParadigmSsm,
-                Capability::AttnSwa,
                 Capability::AttnSink,
                 Capability::AttnMla,
                 Capability::WeightsMxfp4,

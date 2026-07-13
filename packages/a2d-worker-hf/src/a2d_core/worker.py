@@ -173,10 +173,11 @@ def _convert(job: ConversionJob, emit: Callable[[dict[str, Any]], None]) -> int:
     # 4. patch: install the annealed attention seam at alpha=0 (Decision 2). The seam
     #    is resolved from the model's own eager causal structure: GPT-2's self.bias
     #    (attn.full) vs the RoPE family's _update_causal_mask mask (attn.gqa - Gemma/
-    #    Qwen2/Llama). The ConversionJob carries no capability set, so the worker picks
+    #    Qwen2/Llama) vs that same mask plus per-layer sliding windows (attn.swa -
+    #    Gemma 2/3). The ConversionJob carries no capability set, so the worker picks
     #    the handler honestly from the model itself.
     # ponytail: attention seam only; feed the manifest's model_spec.capabilities
-    #   through the job when P6 adds SWA/sink handlers keyed off config-only fields.
+    #   through the job when P6 adds sink handlers keyed off config-only fields.
     emit(progress("patch", 3, total))
     state = AnnealState(alpha=0.0)
     apply_transforms(model, resolve_capabilities(model), state)

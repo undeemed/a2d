@@ -24,15 +24,16 @@ def run_eval(req: EvalRequest, a2d_version: str, schema_version: str) -> EvalRep
     from a2d_core.eval.tasks import EVAL_TASKS
     from a2d_core.eval.tasks.base import TaskContext
     from a2d_core.eval.throughput import measure_throughput
-    from a2d_core.transform.apply import load_model
-    from a2d_core.transform.attention import AnnealState, install_anneal_patch
+    from a2d_core.transform.apply import apply_transforms, load_model, resolve_capabilities
+    from a2d_core.transform.attention import AnnealState
 
     model, tokenizer = load_model(req.model_dir)
     mask_id = tokenizer.mask_token_id
     if mask_id is None:
         raise ValueError(f"{req.model_dir} tokenizer has no mask token (not an a2d checkpoint?)")
     mask_id = int(mask_id)
-    install_anneal_patch(model, AnnealState(alpha=1.0))  # eval the trained bidirectional model
+    # Eval the trained bidirectional model, via the same capability dispatch as the worker.
+    apply_transforms(model, resolve_capabilities(model), AnnealState(alpha=1.0))
 
     likelihood = mdlm_bound(
         model,

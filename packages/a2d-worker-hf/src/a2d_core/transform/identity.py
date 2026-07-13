@@ -5,9 +5,9 @@ patch yields ``max_abs_diff == 0.0`` on CPU float32. The gate ALWAYS runs float3
 CPU regardless of ``--dtype`` (Risk 2). Grow adds a logit COLUMN, so patched logits
 are sliced to ``base_vocab`` before comparing (Decision 7 / Risk 3).
 
-This gate CANNOT prove the patch reaches GPT-2's causality - a no-op seam that leaves
-the model fully causal passes it too - so bidirectionality is proven separately by
-``test_bidir`` (Decision 2).
+This gate CANNOT prove the patch reaches the model's causality - a no-op seam that
+leaves the model fully causal passes it too - so bidirectionality is proven separately
+by ``test_bidir`` (GPT-2) and ``test_gqa_attention`` (RoPE family) (Decision 2).
 """
 
 from __future__ import annotations

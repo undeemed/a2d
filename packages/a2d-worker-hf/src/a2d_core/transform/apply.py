@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from a2d_core.transform.attention import AnnealState
+from a2d_core.transform.gqa_attention import _find_causal_mask_owner
 from a2d_core.transform.handlers import TRANSFORM
 
 # Grown mask token: distinct from GPT-2's eos (50256) so packing separators are
@@ -63,6 +64,30 @@ def resolve_mask_token(model: Any, tokenizer: Any, strategy: str = "grow") -> in
     if tokenizer.add_special_tokens({"mask_token": MASK_TOKEN}):
         grow_embeddings(model, len(tokenizer))
     return int(tokenizer.mask_token_id)
+
+
+def resolve_capabilities(model: Any) -> list[str]:
+    """The attention-handler capabilities a loaded model needs, chosen by its eager
+    causal seam (Decision 2). Two disjoint seams exist in this scope:
+
+    - The RoPE family (Llama/Qwen2/Gemma) routes causality through the 4D mask that
+      ``_update_causal_mask`` builds -> ``attn.gqa`` (covers GQA, MQA, and full-attn
+      RoPE alike; the mask is family-independent).
+    - GPT-2 bakes causality into a per-layer ``self.bias`` buffer -> ``attn.full``.
+
+    The seam is read from the model itself, not from detect's tags: the ``ConversionJob``
+    does not carry the capability set, so the worker independently picks the correct,
+    honest handler. Non-attention capabilities (``pos.*``, ``ffn.dense``, ``norm.*``)
+    have no handler - they are inherent no-ops - so they are never returned here.
+    """
+    if _find_causal_mask_owner(model) is not None:
+        return ["attn.gqa"]
+    if any(type(m).__name__ == "GPT2Attention" for m in model.modules()):
+        return ["attn.full"]
+    raise ValueError(
+        "no supported attention seam found on model "
+        f"{type(model).__name__!r} (neither _update_causal_mask nor GPT2Attention)"
+    )
 
 
 def apply_transforms(model: Any, capabilities: Iterable[str], state: AnnealState) -> None:

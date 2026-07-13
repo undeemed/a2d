@@ -36,6 +36,51 @@ def tiny_gpt2() -> Callable[..., Any]:
     return _make
 
 
+@pytest.fixture
+def tiny_gqa() -> Callable[..., Any]:
+    """Factory for a seeded tiny RoPE/GQA-family model (eager, eval, no download) for
+    ``family in {"gemma", "llama", "qwen2"}``. Same ``(family, seed)`` => bit-identical
+    weights, so two calls give an aligned base/patched pair. Gemma exercises the
+    quirks that matter here: MQA (``num_key_value_heads=1``) and an independent
+    ``head_dim`` (decoupled from ``hidden_size // num_attention_heads``); llama/qwen2
+    exercise GQA (``num_key_value_heads=2``). All are full attention (no SWA)."""
+
+    def _make(family: str = "gemma", seed: int = 0) -> Any:
+        import torch
+        from transformers import AutoModelForCausalLM
+
+        torch.manual_seed(seed)
+        common = {
+            "vocab_size": 48,
+            "hidden_size": 16,
+            "intermediate_size": 32,
+            "num_hidden_layers": 2,
+            "num_attention_heads": 4,
+            "max_position_embeddings": 32,
+            "rms_norm_eps": 1e-6,
+            "rope_theta": 10000.0,
+        }
+        if family == "gemma":
+            from transformers import GemmaConfig
+
+            config: Any = GemmaConfig(
+                num_key_value_heads=1, head_dim=8, hidden_act="gelu_pytorch_tanh", **common
+            )
+        elif family == "llama":
+            from transformers import LlamaConfig
+
+            config = LlamaConfig(num_key_value_heads=2, **common)
+        elif family == "qwen2":
+            from transformers import Qwen2Config
+
+            config = Qwen2Config(num_key_value_heads=2, **common)
+        else:
+            raise ValueError(f"unknown gqa family {family!r}")
+        return AutoModelForCausalLM.from_config(config, attn_implementation="eager").eval()
+
+    return _make
+
+
 @dataclass
 class ConvertSetup:
     """A saved tiny model dir + corpus + a ConversionJob-JSON builder for the
@@ -79,10 +124,48 @@ def _save_tiny_convertible_model(dir_path: Path) -> None:
     )
 
 
-@pytest.fixture
-def convert_setup(tmp_path: Path) -> ConvertSetup:
+def _save_tiny_convertible_gemma(dir_path: Path) -> None:
+    """Save a seeded tiny Gemma 1 + a matching 64-token tokenizer (NO mask token, so the
+    worker's grow step resizes the tied embeddings 64->65) to ``dir_path``. Exercises the
+    RoPE/GQA seam end to end: MQA (num_key_value_heads=1) and an independent head_dim.
+    Network-free."""
+    import torch
+    from tokenizers import Tokenizer, models, pre_tokenizers
+    from transformers import AutoModelForCausalLM, GemmaConfig, PreTrainedTokenizerFast
+
+    vocab = {"<eos>": 0}
+    for i in range(1, 64):
+        vocab[f"w{i}"] = i
+    tok = Tokenizer(models.WordLevel(vocab=vocab, unk_token="<eos>"))
+    tok.pre_tokenizer = pre_tokenizers.Whitespace()
+    fast = PreTrainedTokenizerFast(tokenizer_object=tok, eos_token="<eos>")
+    fast.save_pretrained(str(dir_path))
+
+    torch.manual_seed(0)
+    config = GemmaConfig(
+        vocab_size=64,
+        hidden_size=16,
+        intermediate_size=32,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=1,
+        head_dim=8,
+        max_position_embeddings=32,
+        rms_norm_eps=1e-6,
+        rope_theta=10000.0,
+        hidden_act="gelu_pytorch_tanh",
+    )
+    AutoModelForCausalLM.from_config(config, attn_implementation="eager").eval().save_pretrained(
+        str(dir_path)
+    )
+
+
+def _build_convert_setup(tmp_path: Path, saver: Callable[[Path], None]) -> ConvertSetup:
+    """Shared ConvertSetup: save a tiny model via ``saver``, write a matching corpus, and
+    return a ConversionJob-JSON builder. The corpus/job knobs are model-agnostic, so GPT-2
+    and Gemma share them verbatim (only the saved architecture differs)."""
     model_src = tmp_path / "src"
-    _save_tiny_convertible_model(model_src)
+    saver(model_src)
 
     corpus = tmp_path / "corpus.jsonl"
     line = json.dumps({"text": " ".join(f"w{(i % 63) + 1}" for i in range(40))})
@@ -119,3 +202,13 @@ def convert_setup(tmp_path: Path) -> ConvertSetup:
         )
 
     return ConvertSetup(model_src=model_src, corpus=corpus, run_dir=run_dir, build_job=build_job)
+
+
+@pytest.fixture
+def convert_setup(tmp_path: Path) -> ConvertSetup:
+    return _build_convert_setup(tmp_path, _save_tiny_convertible_model)
+
+
+@pytest.fixture
+def gemma_convert_setup(tmp_path: Path) -> ConvertSetup:
+    return _build_convert_setup(tmp_path, _save_tiny_convertible_gemma)

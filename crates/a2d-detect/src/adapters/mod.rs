@@ -5,6 +5,7 @@
 //! sole sanctioned edit to this table); never edit an existing adapter file
 //! (open-closed, SPEC-HANDOFF section 3.3).
 
+mod gemma;
 mod gpt2;
 mod gpt_oss;
 mod llama;

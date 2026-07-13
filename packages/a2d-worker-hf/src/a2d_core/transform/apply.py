@@ -15,6 +15,7 @@ from typing import Any
 from a2d_core.transform.attention import AnnealState
 from a2d_core.transform.gqa_attention import _find_causal_mask_owner
 from a2d_core.transform.handlers import TRANSFORM
+from a2d_core.transform.swa_attention import has_sliding_window_seam
 
 # Grown mask token: distinct from GPT-2's eos (50256) so packing separators are
 # never confused with a to-be-predicted mask (Decision 7).
@@ -68,9 +69,13 @@ def resolve_mask_token(model: Any, tokenizer: Any, strategy: str = "grow") -> in
 
 def resolve_capabilities(model: Any) -> list[str]:
     """The attention-handler capabilities a loaded model needs, chosen by its eager
-    causal seam (Decision 2). Two disjoint seams exist in this scope:
+    causal seam (Decision 2). Three disjoint seams exist in this scope:
 
-    - The RoPE family (Llama/Qwen2/Gemma) routes causality through the 4D mask that
+    - Gemma 2/3 route causality through ``_update_causal_mask`` AND add a per-layer
+      sliding window on their local decoder layers -> ``attn.swa``. Checked FIRST,
+      because these models also own ``_update_causal_mask`` (the ``attn.gqa`` signal);
+      the swa handler subsumes the gqa future-reveal and additionally opens the window.
+    - The RoPE family (Llama/Qwen2/Gemma 1) routes causality through the 4D mask that
       ``_update_causal_mask`` builds -> ``attn.gqa`` (covers GQA, MQA, and full-attn
       RoPE alike; the mask is family-independent).
     - GPT-2 bakes causality into a per-layer ``self.bias`` buffer -> ``attn.full``.
@@ -80,6 +85,8 @@ def resolve_capabilities(model: Any) -> list[str]:
     honest handler. Non-attention capabilities (``pos.*``, ``ffn.dense``, ``norm.*``)
     have no handler - they are inherent no-ops - so they are never returned here.
     """
+    if has_sliding_window_seam(model):
+        return ["attn.swa"]
     if _find_causal_mask_owner(model) is not None:
         return ["attn.gqa"]
     if any(type(m).__name__ == "GPT2Attention" for m in model.modules()):

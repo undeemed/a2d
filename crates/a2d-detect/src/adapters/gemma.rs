@@ -7,8 +7,10 @@
 //! and the MLP is GeGLU. All of those live in HF's own forward and never touch the
 //! capability set, which is decided purely from config fields. Crucially Gemma 1
 //! has NO sliding window (`sliding_window` absent/null), so it must stay full
-//! attention (no `attn.swa`) - unlike Gemma 2/3, which are gated out. Delegates
-//! classification to the generic workhorse and only pins trust (`inferred = false`).
+//! attention (no `attn.swa`) - unlike Gemma 2/3, whose active window classifies
+//! `attn.swa` (supported, non-blocking since the worker's swa handler landed).
+//! Delegates classification to the generic workhorse and only pins trust
+//! (`inferred = false`).
 
 use crate::generic;
 use crate::spec::ModelSpec;

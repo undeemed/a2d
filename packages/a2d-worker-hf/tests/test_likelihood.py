@@ -36,8 +36,9 @@ def _bound(setup: ConvertSetup, mc_samples: int) -> Any:
 
 
 def test_mdlm_bound_sub_batch_matches_single_batch(convert_setup: ConvertSetup) -> None:
-    """Splitting the forward into sub-batches must not change the bound (numerically identical):
-    the corruption RNG runs over the full chunk set and rows don't attend to each other."""
+    """Splitting the forward into sub-batches must not change the bound (identical up to fp
+    round-off): the corruption RNG runs over the full chunk set and rows don't attend to each
+    other."""
     model, tokenizer, mask_id = _converted(convert_setup)
     kw: dict[str, Any] = dict(
         data_path=str(convert_setup.corpus),
@@ -50,9 +51,14 @@ def test_mdlm_bound_sub_batch_matches_single_batch(convert_setup: ConvertSetup) 
     single = mdlm_bound(model, tokenizer, mask_id, eval_batch_size=0, **kw)  # one big forward
     subbed = mdlm_bound(model, tokenizer, mask_id, eval_batch_size=4, **kw)  # 8 sub-batches
     tiny = mdlm_bound(model, tokenizer, mask_id, eval_batch_size=1, **kw)  # one seq per forward
-    assert single.nats_per_token == subbed.nats_per_token == tiny.nats_per_token
-    assert single.bits_per_token == subbed.bits_per_token == tiny.bits_per_token
-    assert single.std_error == subbed.std_error == tiny.std_error
+    for other in (subbed, tiny):
+        assert math.isclose(
+            single.nats_per_token, other.nats_per_token, rel_tol=1e-9, abs_tol=1e-12
+        )
+        assert math.isclose(
+            single.bits_per_token, other.bits_per_token, rel_tol=1e-9, abs_tol=1e-12
+        )
+        assert math.isclose(single.std_error, other.std_error, rel_tol=1e-9, abs_tol=1e-12)
     assert single.n_tokens == subbed.n_tokens == tiny.n_tokens
     assert single.mc_samples == subbed.mc_samples == tiny.mc_samples
 

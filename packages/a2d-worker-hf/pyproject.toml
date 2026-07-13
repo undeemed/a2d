@@ -9,7 +9,7 @@ dependencies = [
     # Pinned: Decision 2 patches HF's eager attention seams directly. 4.51.3 is the
     # first pin that ships Gemma 3 (`gemma3_text`); the GPT-2 `eager_attention_forward`
     # signature and the Gemma 1 `_update_causal_mask` seam are unchanged from 4.48.3.
-    "transformers==4.51.3",
+    "transformers==5.13.1",
     "accelerate",
     "safetensors",
 ]

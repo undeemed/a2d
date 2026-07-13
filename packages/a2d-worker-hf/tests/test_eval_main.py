@@ -37,6 +37,7 @@ def _request_json(setup: ConvertSetup, model_dir: Path, out_dir: Path) -> str:
             "seq_len": 8,
             "mc_samples": 2,
             "max_eval_tokens": 64,
+            "eval_batch_size": 4,
             "num_steps": 4,
             "seed": 0,
             "device": "cpu",

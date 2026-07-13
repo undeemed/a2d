@@ -12,6 +12,12 @@
       "description": "\"auto\"|\"cpu\"|\"mps\"|\"cuda\".",
       "type": "string"
     },
+    "eval_batch_size": {
+      "description": "Sub-batch (micro-batch) size for the MDLM likelihood forward; 0 => one forward over\nall chunks. Bounds peak eval memory to this many chunks, not `max_eval_tokens`.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
     "html": {
       "description": "Also write report.html.",
       "type": "boolean"
@@ -85,6 +91,7 @@
     "seq_len",
     "mc_samples",
     "max_eval_tokens",
+    "eval_batch_size",
     "num_steps",
     "seed",
     "device",

@@ -42,10 +42,18 @@ def mdlm_bound(
     max_eval_tokens: int,
     seed: int,
     device: str,
+    eval_batch_size: int = 0,
 ) -> LikelihoodBound:
     """MDLM NLL upper bound in nats/token, Monte-Carlo over the diffusion time t.
 
     The model must be bidirectional (alpha=1); the caller installs the anneal patch.
+
+    Corruption (the t-schedule + masking, which drives the RNG) always runs over the FULL
+    chunk set, so the result is independent of ``eval_batch_size``; only the model forward is
+    split into sub-batches of ``eval_batch_size`` chunks (``<= 0`` => one forward over all
+    chunks). Per-sequence rows do not attend to each other, so a sub-batched forward is
+    numerically identical to the single-batch one - it just caps peak memory at the sub-batch
+    size instead of at ``max_eval_tokens`` (avoids OOM on a single giant forward).
     """
     from a2d_core.objectives.mdlm import MDLM
 
@@ -53,6 +61,7 @@ def mdlm_bound(
     model.to(dev).eval()
     chunks = _eval_chunks(data_path, tokenizer, seq_len, max_eval_tokens).to(dev)
     n_chunks = int(chunks.size(0))
+    sub = eval_batch_size if eval_batch_size > 0 else n_chunks
 
     mdlm = MDLM(mask_token_id, seed=seed)
     batch = [{"input_ids": chunks[i]} for i in range(n_chunks)]
@@ -62,13 +71,15 @@ def mdlm_bound(
         noisy = corrupted["input_ids"].to(dev)
         clean = corrupted["clean"].to(dev)
         weight = corrupted["mask"].to(dev)  # (1/t) at masked positions, 0 elsewhere
-        with torch.no_grad():
-            logits = model(input_ids=noisy).logits
-        logp = torch.log_softmax(logits.float(), dim=-1)
-        nll = -logp.gather(-1, clean.clamp_min(0).unsqueeze(-1)).squeeze(-1)
-        # sum_masked (1/t)*nll per sequence = the MDLM sequence NLL estimate; /seq_len => per token.
-        seq_nats = (weight * nll).sum(dim=-1) / seq_len
-        per_seq_nats.extend(seq_nats.tolist())
+        for start in range(0, n_chunks, sub):
+            stop = start + sub
+            with torch.no_grad():
+                logits = model(input_ids=noisy[start:stop]).logits
+            logp = torch.log_softmax(logits.float(), dim=-1)
+            nll = -logp.gather(-1, clean[start:stop].clamp_min(0).unsqueeze(-1)).squeeze(-1)
+            # sum_masked (1/t)*nll per seq = the MDLM sequence NLL estimate; /seq_len => per token.
+            seq_nats = (weight[start:stop] * nll).sum(dim=-1) / seq_len
+            per_seq_nats.extend(seq_nats.tolist())
 
     values = torch.tensor(per_seq_nats, dtype=torch.float64)
     nats = float(values.mean())

@@ -35,6 +35,58 @@ def _bound(setup: ConvertSetup, mc_samples: int) -> Any:
     )
 
 
+def test_mdlm_bound_sub_batch_matches_single_batch(convert_setup: ConvertSetup) -> None:
+    """Splitting the forward into sub-batches must not change the bound (numerically identical):
+    the corruption RNG runs over the full chunk set and rows don't attend to each other."""
+    model, tokenizer, mask_id = _converted(convert_setup)
+    kw: dict[str, Any] = dict(
+        data_path=str(convert_setup.corpus),
+        seq_len=8,
+        mc_samples=3,
+        max_eval_tokens=256,  # 32 chunks -> exercises real splitting
+        seed=0,
+        device="cpu",
+    )
+    single = mdlm_bound(model, tokenizer, mask_id, eval_batch_size=0, **kw)  # one big forward
+    subbed = mdlm_bound(model, tokenizer, mask_id, eval_batch_size=4, **kw)  # 8 sub-batches
+    tiny = mdlm_bound(model, tokenizer, mask_id, eval_batch_size=1, **kw)  # one seq per forward
+    assert single.nats_per_token == subbed.nats_per_token == tiny.nats_per_token
+    assert single.bits_per_token == subbed.bits_per_token == tiny.bits_per_token
+    assert single.std_error == subbed.std_error == tiny.std_error
+    assert single.n_tokens == subbed.n_tokens == tiny.n_tokens
+    assert single.mc_samples == subbed.mc_samples == tiny.mc_samples
+
+
+def test_mdlm_bound_forward_is_sub_batched(convert_setup: ConvertSetup) -> None:
+    """A large token budget must not run one monolithic forward: peak batch dim is capped by
+    ``eval_batch_size`` and the model is called once per sub-batch per MC sample."""
+    model, tokenizer, mask_id = _converted(convert_setup)
+    batch_dims: list[int] = []
+    orig_forward = model.forward
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        batch_dims.append(int(kwargs["input_ids"].size(0)))
+        return orig_forward(*args, **kwargs)
+
+    model.forward = spy
+    result = mdlm_bound(
+        model,
+        tokenizer,
+        mask_id,
+        data_path=str(convert_setup.corpus),
+        seq_len=8,
+        mc_samples=2,
+        max_eval_tokens=256,  # 32 chunks; a single forward here is what OOMs at real scale
+        seed=0,
+        device="cpu",
+        eval_batch_size=4,
+    )
+    assert result.n_tokens == 32 * 8  # all chunks still scored
+    assert max(batch_dims) <= 4  # never a giant forward
+    # 32 chunks / 4 per sub-batch = 8 sub-batches, x2 MC samples = 16 forwards (not 2).
+    assert len(batch_dims) == 16
+
+
 def test_mdlm_bound_finite_positive_deterministic(convert_setup: ConvertSetup) -> None:
     a = _bound(convert_setup, 4)
     b = _bound(convert_setup, 4)

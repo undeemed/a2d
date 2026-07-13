@@ -290,6 +290,9 @@ pub struct EvalRequest {
     pub mc_samples: u64,
     /// Cap on scored tokens, keeps eval bounded.
     pub max_eval_tokens: u64,
+    /// Sub-batch (micro-batch) size for the MDLM likelihood forward; 0 => one forward over
+    /// all chunks. Bounds peak eval memory to this many chunks, not `max_eval_tokens`.
+    pub eval_batch_size: u64,
     /// Denoiser steps for the diffusion throughput measurement.
     pub num_steps: u64,
     pub seed: u64,
@@ -629,6 +632,7 @@ mod tests {
             seq_len: 128,
             mc_samples: 8,
             max_eval_tokens: 4096,
+            eval_batch_size: 8,
             num_steps: 32,
             seed: 0,
             device: "auto".into(),

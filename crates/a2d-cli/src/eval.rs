@@ -27,6 +27,10 @@ pub struct EvalArgs {
     /// Cap on scored tokens.
     #[arg(long = "max-eval-tokens", default_value_t = 65536)]
     pub max_eval_tokens: u64,
+    /// Sub-batch size for the MDLM likelihood forward; caps peak memory. 0 => one forward
+    /// over all chunks (may OOM at large `--max-eval-tokens`).
+    #[arg(long = "eval-batch-size", default_value_t = 8)]
+    pub eval_batch_size: u64,
     /// Denoiser steps for the diffusion throughput measurement.
     #[arg(long = "num-steps", default_value_t = 32)]
     pub num_steps: u64,
@@ -71,6 +75,7 @@ pub fn run(args: EvalArgs) -> Result<ExitCode> {
         seq_len,
         mc_samples: args.mc_samples,
         max_eval_tokens: args.max_eval_tokens,
+        eval_batch_size: args.eval_batch_size,
         num_steps: args.num_steps,
         seed: args.seed,
         device: args.device,

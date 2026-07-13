@@ -17,6 +17,10 @@ class EvalRequest(BaseModel):
         description="Held-out corpus for the likelihood bound + AR perplexity (local jsonl/txt).",
     )
     device: str = Field(..., description='"auto"|"cpu"|"mps"|"cuda".')
+    eval_batch_size: conint(ge=0) = Field(
+        ...,
+        description="Sub-batch (micro-batch) size for the MDLM likelihood forward; 0 => one forward over\nall chunks. Bounds peak eval memory to this many chunks, not `max_eval_tokens`.",
+    )
     html: bool = Field(..., description="Also write report.html.")
     max_eval_tokens: conint(ge=0) = Field(
         ..., description="Cap on scored tokens, keeps eval bounded."

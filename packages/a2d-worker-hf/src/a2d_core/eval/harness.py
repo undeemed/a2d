@@ -45,6 +45,7 @@ def run_eval(req: EvalRequest, a2d_version: str, schema_version: str) -> EvalRep
         max_eval_tokens=int(req.max_eval_tokens),
         seed=int(req.seed),
         device=req.device,
+        eval_batch_size=int(req.eval_batch_size),
     )
     baseline = ar_baseline(
         req.source_model,

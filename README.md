@@ -1,7 +1,7 @@
 # a2d
 
 [![CI](https://github.com/undeemed/a2d/actions/workflows/ci.yml/badge.svg)](https://github.com/undeemed/a2d/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
 **Convert open-weight autoregressive LLMs into diffusion language models. Locally, with one command.**
 
@@ -86,4 +86,4 @@ If a2d's framing ever drifts toward claiming the method — file an issue. The h
 
 ## License
 
-MIT. Licensed under the terms of the [`LICENSE`](LICENSE) file.
+Apache-2.0. Licensed under the terms of the [`LICENSE`](LICENSE) file.

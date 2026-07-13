@@ -7,7 +7,7 @@
 
 The repo currently holds only design docs (README, ARCHITECTURE, SPEC-HANDOFF, LANDSCAPE); no code, no git history.
 This plan scaffolds the full Phase 0 walking skeleton: every layer exists and talks.
-Decisions settled: full Phase 0 scope (not structure-only), MIT license (originally Apache-2.0, changed post-scaffold), OSS-quality tooling from day one.
+Decisions settled: full Phase 0 scope (not structure-only), Apache-2.0 license (relicensed from the initial MIT scaffold), OSS-quality tooling from day one.
 
 **Exit criterion:** a no-op `a2d convert` spawns the Python worker, streams events to the terminal, and leaves a well-formed run dir with `manifest.json` + `events.jsonl`.
 
@@ -20,8 +20,8 @@ no single-child directories.
 
 ```
 a2d/
-  README.md                     # stays; License section TBD -> MIT
-  LICENSE                       # MIT
+  README.md                     # stays; License section -> Apache-2.0
+  LICENSE                       # Apache-2.0
   CONTRIBUTING.md               # build/test/codegen commands; points at docs/SPEC-HANDOFF.md §3.3
   .gitignore  .editorconfig  rust-toolchain.toml
   Cargo.toml                    # cargo workspace: crates/*; workspace lints

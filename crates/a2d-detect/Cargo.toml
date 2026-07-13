@@ -2,7 +2,7 @@
 name = "a2d-detect"
 version = "0.1.0"
 edition = "2021"
-license = "MIT"
+license = "Apache-2.0"
 
 [dependencies]
 a2d-contracts = { path = "../a2d-contracts" }

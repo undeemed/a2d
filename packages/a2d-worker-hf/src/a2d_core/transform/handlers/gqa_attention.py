@@ -2,10 +2,12 @@
 
 Llama / Qwen2 / Gemma route causality through the 4D mask that ``_update_causal_mask``
 builds (not GPT-2's per-layer ``self.bias``), so this handler installs the mask-seam
-anneal patch. It covers GQA, MQA (Gemma's ``num_key_value_heads=1``), and full-attention
-RoPE models alike, leaving RoPE, the KV-group expansion, RMSNorm, and Gemma's embedding
-scaling to HF's own forward. The ``alpha=0`` identity gate and the ``alpha=1`` bidir test
-together prove the patch is bit-identical to base yet genuinely reaches future tokens.
+anneal patch. It covers GQA, MQA (Gemma's ``num_key_value_heads=1``), full-attention
+RoPE models, and the single-mask windowed families (Mistral v0.1, Qwen2 with an active
+sliding window) whose far-past window lives in that same mask, leaving RoPE, the
+KV-group expansion, RMSNorm, and Gemma's embedding scaling to HF's own forward. The
+``alpha=0`` identity gate and the ``alpha=1`` bidir test together prove the patch is
+bit-identical to base yet genuinely reaches future tokens.
 """
 
 from __future__ import annotations

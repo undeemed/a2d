@@ -1,15 +1,17 @@
-"""Gemma 3 sliding-window (``attn.swa``) bidirectionalization: the D13 identity gate
+"""Gemma 2/3 sliding-window (``attn.swa``) bidirectionalization: the D13 identity gate
 at ``alpha=0`` (bit-identical to base, with BOTH a local and a global layer present)
 and the ``alpha=1`` behavior guard - proving BOTH the future-reveal (causality opens)
 and the window-open (the sliding window's far-past opens) - plus the worker's
 structural handler dispatch.
 
-Gemma 3's eager seam is the single 4D ``_update_causal_mask`` (like Gemma 1) PLUS a
-per-layer far-past window re-mask on its local (sliding) decoder layers. The window
+The Gemma 2/3 eager seam is the single 4D ``_update_causal_mask`` (like Gemma 1) PLUS
+a per-layer far-past window re-mask on the local (sliding) decoder layers. The window
 test uses an all-sliding single-layer model so a query's receptive field is exactly
 its window; the identity/future tests use a mixed 4-layer stack (local layers 0, 2 and
-global layers 1, 3). All hermetic: tiny random-weight configs on CPU float32, no
-network.
+global layers 1, 3). Gemma 2 - whose decoder layer takes a single
+``position_embeddings`` pair where Gemma 3 takes a global/local pair - guards the
+wrapper's signature-agnostic re-bind. All hermetic: tiny random-weight configs on CPU
+float32, no network.
 """
 
 from __future__ import annotations
@@ -189,6 +191,86 @@ def test_swa_padding_stays_masked_and_identity_holds_with_padding(
             0, 4, :
         ]
     assert not torch.equal(real[4, :], real_after)
+
+
+def test_swa_gemma2_patched_at_alpha0_is_bit_identical_to_base(
+    tiny_gemma2: Callable[..., Any],
+) -> None:
+    """Regression (review: swa-gemma2-signature-crash): Gemma 2's decoder layer takes a
+    single ``position_embeddings`` pair, so the wrapper must survive its keyword call
+    path without crashing, and patched@alpha=0 logits must equal base to 0.0 with both
+    a local and a global layer exercised."""
+    base = tiny_gemma2()
+    patched = tiny_gemma2()
+    patched.load_state_dict(base.state_dict())  # guarantee identical weights
+    kinds = [layer.is_sliding for layer in patched.model.layers]
+    assert any(kinds) and not all(kinds), f"need both local and global layers, got {kinds}"
+    assert resolve_capabilities(patched) == ["attn.swa"]
+    state = AnnealState()
+    install_swa_anneal_patch(patched, state)
+
+    base_vocab = int(base.config.vocab_size)
+    probe = torch.randint(0, base_vocab, (2, 8))
+    result = check_identity(base, patched, state, probe, base_vocab)
+
+    assert result.passed
+    assert result.max_abs_diff == 0.0  # eager + fp32 is exact, not merely within tolerance
+
+
+def test_swa_gemma2_opens_window_and_future_at_alpha1_not_alpha0(
+    tiny_gemma2: Callable[..., Any],
+) -> None:
+    """Gemma 2 end-to-end reveal through the signature-agnostic wrapper: on an
+    all-sliding single-layer model an in-window key moves the query's logits even at
+    alpha=0 (non-vacuity), while a far-past out-of-window key AND a strictly-future key
+    move them at alpha=1 only."""
+    model = tiny_gemma2(num_hidden_layers=1, sliding_window=2)
+    assert all(layer.is_sliding for layer in model.model.layers)
+    state = AnnealState()
+    install_swa_anneal_patch(model, state)
+    ids = torch.randint(0, int(model.config.vocab_size), (1, 8))
+
+    # In-window past token (k=2) reaches q=3 already at alpha=0: guards against vacuity.
+    assert _shift(model, state, ids, q=3, k=2, alpha=0.0) > 1e-6
+
+    # Far-past token outside the window (k=0): windowed out at alpha=0, revealed at alpha=1.
+    assert _shift(model, state, ids, q=3, k=0, alpha=0.0) == 0.0
+    assert _shift(model, state, ids, q=3, k=0, alpha=1.0) > 1e-6
+
+    # Strictly-future token (k=6): causally masked at alpha=0, revealed at alpha=1.
+    assert _shift(model, state, ids, q=3, k=6, alpha=0.0) == 0.0
+    assert _shift(model, state, ids, q=3, k=6, alpha=1.0) > 1e-6
+
+
+def test_swa_wrapped_layer_survives_gradient_checkpointing(
+    tiny_gemma2: Callable[..., Any], tiny_gemma3: Callable[..., Any]
+) -> None:
+    """The positional call path: under gradient checkpointing the model invokes the
+    decoder layer with every argument positional, which the wrapper must re-bind
+    against the original signature for both the Gemma 2 and Gemma 3 shapes."""
+    for model in (tiny_gemma2(), tiny_gemma3()):
+        state = AnnealState(alpha=0.5)
+        install_swa_anneal_patch(model, state)
+        model.gradient_checkpointing_enable()
+        model.train()
+        ids = torch.randint(0, int(model.config.vocab_size), (1, 8))
+        out = model(ids, labels=ids)
+        out.loss.backward()
+
+
+def test_swa_install_on_non_sliding_model_raises_and_leaves_model_unpatched(
+    tiny_gqa: Callable[..., Any],
+) -> None:
+    """Atomic install: on a model with no sliding decoder layers the install must raise
+    BEFORE the shared mask patch runs, leaving use_cache and _update_causal_mask
+    untouched."""
+    model = tiny_gqa("gemma", 0)
+    with pytest.raises(ValueError, match="no sliding-window decoder layers"):
+        install_swa_anneal_patch(model, AnnealState())
+
+    assert model.config.use_cache is True
+    assert "_update_causal_mask" not in vars(model.model)
+    assert not hasattr(model.model, "_a2d_gqa_orig_update_causal_mask")
 
 
 def test_swa_reinstall_with_fresh_state_takes_effect(tiny_gemma3: Callable[..., Any]) -> None:

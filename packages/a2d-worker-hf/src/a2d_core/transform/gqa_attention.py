@@ -1,6 +1,6 @@
 """Annealed causal->bidirectional attention for the RoPE/GQA family (Decision 2).
 
-Llama / Qwen2 / Gemma (``transformers==4.48.3``) do NOT bake causality into a
+Llama / Qwen2 / Gemma (``transformers==4.51.3``) do NOT bake causality into a
 per-layer ``self.bias`` buffer the way GPT-2 does. Instead the decoder ``*Model``
 builds one 4D additive causal mask per forward in ``_update_causal_mask`` and hands
 it down to every layer; eager attention just does ``scores + causal_mask``. Causality
@@ -12,20 +12,24 @@ group expansion (``repeat_kv``), RoPE, RMSNorm, and Gemma's sqrt(hidden) embeddi
 scaling all stay untouched in HF's own forward.
 
 The patch wraps the decoder's bound ``_update_causal_mask``: it calls the original
-to get the exact base mask, then re-reveals the strictly-future cells under one
-shared ``AnnealState``:
+to get the exact base mask, then re-reveals every cell that mask masked for a real
+(non-padded) key under one shared ``AnnealState``. For the full-attention RoPE
+family those cells are exactly the strictly-future set; Mistral v0.1 and Qwen2 with
+an active ``use_sliding_window`` fold their sliding window into this SAME model-level
+mask (they have no per-layer window), so their far-past out-of-window cells reopen
+through the identical anneal and ``alpha=1`` is fully non-causal AND unwindowed:
 
-* At ``alpha=0`` the future penalty is exactly ``finfo(dtype).min`` - the same value
-  the base mask already carries at future cells - so ``torch.where(future, penalty,
+* At ``alpha=0`` the penalty is exactly ``finfo(dtype).min`` - the same value the
+  base mask already carries at masked cells - so ``torch.where(reveal, penalty,
   base)`` returns a tensor bit-identical to base, and patched@0 logits equal base to
   the bit (the D13 identity gate).
-* At ``alpha=1`` the penalty is ``log(1)=0`` so future cells become attendable and
+* At ``alpha=1`` the penalty is ``log(1)=0`` so masked cells become attendable and
   attention is fully bidirectional; intermediate ``alpha`` applies ``log(alpha)`` (a
   smooth monotone reveal), mirroring the GPT-2 seam's semantics.
 
 Deriving the result FROM the base mask (rather than rebuilding it) is what makes the
 ``alpha=0`` no-op bit-identical by construction, independent of dtype, cache offset,
-or padding. A genuine 2D padding mask is preserved: a future cell is only revealed
+or padding. A genuine 2D padding mask is preserved: a masked cell is only revealed
 when its key is a real (non-padded) token, so padding stays masked at every alpha.
 
 The override is installed on the model INSTANCE (it shadows the class method via the
@@ -54,8 +58,8 @@ _ORIG_ATTR = "_a2d_gqa_orig_update_causal_mask"
 _STATE_ATTR = "_a2d_anneal"
 
 
-def _future_penalty(alpha: float, dtype: torch.dtype) -> float:
-    """Additive pre-softmax penalty for a strictly-future cell at this ``alpha``.
+def _reveal_penalty(alpha: float, dtype: torch.dtype) -> float:
+    """Additive pre-softmax penalty for a revealed masked cell at this ``alpha``.
 
     ``finfo(dtype).min`` at ``alpha<=0`` (matches the base causal mask exactly, so the
     identity gate is bit-identical); ``log(alpha)`` clamped to ``finfo.min`` otherwise;
@@ -120,18 +124,18 @@ def install_gqa_anneal_patch(model: Any, state: AnnealState) -> None:
             return None
         dtype = base_mask.dtype
         kv_len = base_mask.shape[-1]
-        # future[q, kv]: key strictly after the query's cache position - exactly the
-        # cells the base mask masked for causality (mirrors base's own arange > pos).
-        future = torch.arange(kv_len, device=base_mask.device) > cache_position.reshape(-1, 1)
-        reveal = future[None, None, :, :]
-        # Preserve genuine padding: only reveal a future cell whose key is real, so a
+        # Every cell the base mask masked (exactly finfo.min): the strictly-future
+        # causal cells, plus - for single-mask windowed families like Mistral v0.1 or
+        # Qwen2 with an active sliding window - the far-past out-of-window cells.
+        reveal = base_mask == torch.finfo(dtype).min
+        # Preserve genuine padding: only reveal a masked cell whose key is real, so a
         # padded key stays finfo.min at every alpha (parity with the GPT-2 seam).
         if isinstance(attention_mask, torch.Tensor) and attention_mask.dim() == 2:
             real_key = (attention_mask != 0)[:, None, None, :kv_len]
             reveal = reveal & real_key
         live_state: AnnealState = getattr(self, _STATE_ATTR)
         penalty = torch.full(
-            (), _future_penalty(live_state.alpha, dtype), dtype=dtype, device=base_mask.device
+            (), _reveal_penalty(live_state.alpha, dtype), dtype=dtype, device=base_mask.device
         )
         return torch.where(reveal, penalty, base_mask)
 

@@ -1,8 +1,8 @@
 """``attn.swa`` transform: annealed bidirectional attention for the sliding-window
-Gemma family (Gemma 3).
+Gemma family (Gemma 2/3).
 
-Gemma 3 routes causality through the same model-level 4D mask as the RoPE/GQA family
-(``_update_causal_mask``) but ADDS a per-layer sliding window on its local layers.
+Gemma 2/3 route causality through the same model-level 4D mask as the RoPE/GQA family
+(``_update_causal_mask``) but ADD a per-layer sliding window on their local layers.
 This handler installs the two-part SWA anneal: the shared future-reveal on the full
 causal mask plus a far-past reveal on every sliding decoder layer, so at ``alpha=0``
 the model is bit-identical to base (identity gate) and at ``alpha=1`` attention is

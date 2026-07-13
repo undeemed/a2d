@@ -48,6 +48,9 @@ file (Decision 7). See `docs/SPEC-HANDOFF.md` section 3.3 and `docs/PLAN-PHASE1.
   The classification indicator is an ACTIVE window (present, `> 0`, and `use_sliding_window != false`), not
   mere presence of the field. `attn.swa` is now a supported, non-blocking capability, so both would pass the
   gate; only the classified tag differs.
+  At convert time Mistral's window lives in the single model-level 4D mask (it has no sliding decoder
+  layers), so the worker routes it to `attn.gqa`, whose reveal opens every base-masked real-key cell -
+  the far-past window along with the future - so at `alpha=1` it is unwindowed, never silently windowed.
 - **`qwen2` proves the SWA guard's negative case.**
   It sets `sliding_window: 131072` but `use_sliding_window: false`, so it is NOT `attn.swa` and stays
   supported.

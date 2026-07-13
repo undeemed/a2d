@@ -125,6 +125,76 @@ def tiny_gemma3() -> Callable[..., Any]:
     return _make
 
 
+@pytest.fixture
+def tiny_gemma2() -> Callable[..., Any]:
+    """Factory for a seeded tiny Gemma 2 (eager, eval, no download).
+
+    Same ``(kwargs, seed)`` => bit-identical weights, so two calls give an aligned
+    base/patched pair. Exercises the Gemma 2 per-layer sliding-window seam: the window
+    logic is identical to Gemma 3's, but the decoder layer's ``forward`` takes ONE
+    ``position_embeddings`` pair where Gemma 3 takes a global/local pair - the
+    signature the swa wrapper must not hardcode away - and every EVEN layer slides.
+    Defaults (2 layers) put both a local layer (0) and a global layer (1) in the
+    stack; pass ``num_hidden_layers=1`` for an all-sliding model whose single layer's
+    receptive field is exactly the window."""
+
+    def _make(seed: int = 0, num_hidden_layers: int = 2, sliding_window: int = 2) -> Any:
+        import torch
+        from transformers import AutoModelForCausalLM, Gemma2Config
+
+        torch.manual_seed(seed)
+        config = Gemma2Config(
+            vocab_size=48,
+            hidden_size=16,
+            intermediate_size=32,
+            num_hidden_layers=num_hidden_layers,
+            num_attention_heads=4,
+            num_key_value_heads=1,
+            head_dim=8,
+            max_position_embeddings=32,
+            rms_norm_eps=1e-6,
+            rope_theta=10000.0,
+            sliding_window=sliding_window,
+            query_pre_attn_scalar=8,
+        )
+        return AutoModelForCausalLM.from_config(config, attn_implementation="eager").eval()
+
+    return _make
+
+
+@pytest.fixture
+def tiny_mistral() -> Callable[..., Any]:
+    """Factory for a seeded tiny Mistral (eager, eval, no download) with an ACTIVE
+    sliding window (default 2, well under the tests' seq_len 8).
+
+    Same ``(kwargs, seed)`` => bit-identical weights, so two calls give an aligned
+    base/patched pair. Mistral folds its window into the single model-level 4D mask
+    ``_update_causal_mask`` builds and has NO sliding decoder layers, so it routes to
+    ``attn.gqa`` - the single-mask windowed flavor whose far-past cells the shared
+    reveal must open alongside the strictly-future ones."""
+
+    def _make(seed: int = 0, sliding_window: int = 2) -> Any:
+        import torch
+        from transformers import AutoModelForCausalLM, MistralConfig
+
+        torch.manual_seed(seed)
+        config = MistralConfig(
+            vocab_size=48,
+            hidden_size=16,
+            intermediate_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            max_position_embeddings=32,
+            rms_norm_eps=1e-6,
+            rope_theta=10000.0,
+            sliding_window=sliding_window,
+        )
+        return AutoModelForCausalLM.from_config(config, attn_implementation="eager").eval()
+
+    return _make
+
+
 @dataclass
 class ConvertSetup:
     """A saved tiny model dir + corpus + a ConversionJob-JSON builder for the

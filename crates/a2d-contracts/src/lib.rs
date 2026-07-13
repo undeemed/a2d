@@ -180,7 +180,9 @@ impl Capability {
 
     /// True ONLY for the five caps Phase 1 cannot handle. Every implemented
     /// conversion cap - now including `AttnSwa`, whose sliding-window anneal the
-    /// worker's `attn.swa` handler performs (Gemma 3) - and every fidelity cap
+    /// worker performs for both flavors (per-layer Gemma 2/3 via the `attn.swa`
+    /// handler; single-mask Mistral/Qwen2 via the shared `attn.gqa` mask reveal) -
+    /// and every fidelity cap
     /// returns false, so fidelity tags cannot block by construction. Flipping
     /// `AttnSink` here later is the remaining "enable GPT-OSS" change
     /// (ARCHITECTURE 5's "flip the gate").

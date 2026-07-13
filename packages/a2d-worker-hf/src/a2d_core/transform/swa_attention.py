@@ -1,13 +1,17 @@
-"""Annealed causal->bidirectional attention for the sliding-window Gemma family (Gemma 3).
+"""Annealed causal->bidirectional attention for the sliding-window Gemma family
+(Gemma 2/3).
 
-Gemma 3 (``transformers==4.51.3``) is the RoPE/GQA seam PLUS a per-layer sliding
-window. Its decoder ``Gemma3TextModel`` builds ONE full 4D additive causal mask in
+Gemma 2 and Gemma 3 (``transformers==4.51.3``) are the RoPE/GQA seam PLUS a per-layer
+sliding window. Their decoder ``*Model`` builds ONE full 4D additive causal mask in
 ``_update_causal_mask`` - exactly the Gemma 1 seam - and hands it to every layer.
-Then each *sliding* ``Gemma3DecoderLayer.forward`` further masks the strictly-
-far-past (keys more than ``sliding_window`` behind the query) to ``finfo(dtype).min``;
-every ``sliding_window_pattern``-th layer is *global* and skips that step. Eager
-attention just does ``scores + attention_mask``, so BOTH causality (future) AND the
-window (far-past) flow entirely through the additive mask, layer by layer.
+Then each *sliding* decoder layer's ``forward`` further masks the strictly-
+far-past (keys more than ``sliding_window`` behind the query) to ``finfo(dtype).min``
+with identical logic in both families; the remaining layers are *global* and skip
+that step (Gemma 3 windows all but every ``sliding_window_pattern``-th layer, Gemma 2
+every other layer). Eager attention just does ``scores + attention_mask``, so BOTH
+causality (future) AND the window (far-past) flow entirely through the additive mask,
+layer by layer. (Mistral-style models instead fold their window into the model-level
+mask and have no sliding layers; they are the ``attn.gqa`` seam, not this one.)
 
 Bidirectionalizing therefore needs TWO coordinated anneals over one shared
 ``AnnealState``:
@@ -22,10 +26,10 @@ Both use the same penalty ramp as the GPT-2/GQA seams: ``finfo(dtype).min`` at
 ``alpha=0`` (so each reveal is bit-identical to base -> the D13 identity gate reads
 ``max_abs_diff == 0.0``) and ``clamp(log(alpha), finfo.min)``, reaching ``0`` at
 ``alpha=1`` (fully non-causal AND unwindowed). Global layers are untouched by the
-second wrap; they open through the first alone. RoPE (per-layer local vs global
-theta), query-key norm, the GQA/MQA layout, RMSNorm, and Gemma's sqrt(hidden)
-embedding scaling all stay in HF's own forward - only the additive mask is patched,
-exactly as the Gemma 1 seam does.
+second wrap; they open through the first alone. RoPE (Gemma 3's per-layer local vs
+global theta), query-key norm, the GQA/MQA layout, RMSNorm, logit softcapping
+(Gemma 2), and Gemma's sqrt(hidden) embedding scaling all stay in HF's own forward -
+only the additive mask is patched, exactly as the Gemma 1 seam does.
 
 The far-past wrap temporarily flips the decoder layer's ``is_sliding`` to ``False``
 so HF's own (hard ``finfo.min``) window re-mask is skipped for that one call, and
@@ -38,6 +42,7 @@ keeps its original causal+windowed attention.
 
 from __future__ import annotations
 
+import inspect
 import types
 from collections.abc import Iterator
 from typing import Any
@@ -45,7 +50,7 @@ from typing import Any
 import torch
 
 from a2d_core.transform.attention import AnnealState
-from a2d_core.transform.gqa_attention import _future_penalty, install_gqa_anneal_patch
+from a2d_core.transform.gqa_attention import _reveal_penalty, install_gqa_anneal_patch
 
 # Stash of the original bound decoder-layer ``forward`` (guards double-wrapping) and
 # the live ``AnnealState`` tag read by the wrapper, re-assigned on every install so a
@@ -79,11 +84,13 @@ def has_sliding_window_seam(model: Any) -> bool:
 def _anneal_window(
     layer: Any, attention_mask: Any, cache_position: Any, last_cache_position: int
 ) -> Any:
-    """Mirror ``Gemma3DecoderLayer``'s sliding re-mask but reveal the far-past per alpha.
+    """Mirror the Gemma 2/3 decoder layer's sliding re-mask but reveal the far-past
+    per alpha.
 
-    Reproduces HF's exact eager (4D) window logic - the ``tril(diagonal=-window)``
-    far-past selection and the ``[offset : offset + effective_seq_len]`` slice - only
-    swapping the hard ``finfo(dtype).min`` fill for the annealed penalty.
+    Reproduces HF's exact eager (4D) window logic (identical in both families) - the
+    ``tril(diagonal=-window)`` far-past selection and the
+    ``[offset : offset + effective_seq_len]`` slice - only swapping the hard
+    ``finfo(dtype).min`` fill for the annealed penalty.
 
     The reveal is restricted to far-past cells that are currently *attendable* (mask
     ``== 0``), i.e. real past keys. Cells already at ``finfo.min`` are keys the base
@@ -109,7 +116,7 @@ def _anneal_window(
     reveal = far_past & (attention_mask == 0)  # real (attendable) far-past keys only
     state: AnnealState = getattr(layer, _STATE_ATTR)
     penalty = torch.full(
-        (), _future_penalty(state.alpha, dtype), dtype=dtype, device=attention_mask.device
+        (), _reveal_penalty(state.alpha, dtype), dtype=dtype, device=attention_mask.device
     )
     attention_mask = torch.where(reveal, penalty, attention_mask)
     offset = max(0, last_cache_position - effective_seq_len)
@@ -119,43 +126,29 @@ def _anneal_window(
 def _make_wrapped_forward(orig: Any) -> Any:
     """Build the decoder-layer ``forward`` replacement bound around ``orig``.
 
-    Matches ``Gemma3DecoderLayer.forward``'s exact signature so it works whether the
-    layer is called with keywords (the model's own forward) or positionally (gradient
-    checkpointing). It pre-computes the annealed window mask, then calls ``orig`` with
-    ``is_sliding`` temporarily off so HF does not re-apply its own hard window mask.
+    Signature-agnostic: the call is re-bound against ``orig``'s own signature (Gemma 2
+    takes one ``position_embeddings`` pair where Gemma 3 takes a global/local pair),
+    so it works whether the layer is called with keywords (the model's own forward) or
+    positionally (gradient checkpointing). Only ``attention_mask`` is replaced - with
+    the annealed window mask - and every other argument passes through unchanged.
+    ``orig`` then runs with ``is_sliding`` temporarily off so HF does not re-apply its
+    own hard window mask.
     """
+    signature = inspect.signature(orig)
 
-    def _wrapped(
-        self: Any,
-        hidden_states: torch.Tensor,
-        position_embeddings_global: Any,
-        position_embeddings_local: Any,
-        attention_mask: Any = None,
-        position_ids: Any = None,
-        past_key_value: Any = None,
-        output_attentions: bool = False,
-        use_cache: bool = False,
-        cache_position: Any = None,
-        last_cache_position: int = 0,
-        **kwargs: Any,
-    ) -> Any:
-        annealed = _anneal_window(self, attention_mask, cache_position, last_cache_position)
+    def _wrapped(self: Any, *args: Any, **kwargs: Any) -> Any:
+        bound = signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+        bound.arguments["attention_mask"] = _anneal_window(
+            self,
+            bound.arguments.get("attention_mask"),
+            bound.arguments.get("cache_position"),
+            int(bound.arguments.get("last_cache_position") or 0),
+        )
         was_sliding = self.is_sliding
         self.is_sliding = False  # skip HF's hard finfo.min window re-mask for this call
         try:
-            return orig(
-                hidden_states,
-                position_embeddings_global=position_embeddings_global,
-                position_embeddings_local=position_embeddings_local,
-                attention_mask=annealed,
-                position_ids=position_ids,
-                past_key_value=past_key_value,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                cache_position=cache_position,
-                last_cache_position=last_cache_position,
-                **kwargs,
-            )
+            return orig(*bound.args, **bound.kwargs)
         finally:
             self.is_sliding = was_sliding
 
@@ -169,25 +162,24 @@ def install_swa_anneal_patch(model: Any, state: AnnealState) -> None:
     single full causal mask (reused from ``install_gqa_anneal_patch`` - this also
     enforces ``attn_implementation='eager'`` and ``use_cache=False`` and tags the mask
     owner), plus a far-past reveal wrapped onto every sliding decoder layer's forward.
+    The seam is validated up front so a failed install leaves the model untouched.
     Re-installing swaps in the fresh state without double-wrapping.
     """
+    if not has_sliding_window_seam(model):
+        raise ValueError(
+            "SWA anneal patch found no sliding-window decoder layers "
+            f"on {type(model).__name__!r} (not a Gemma 2/3 sliding-window model?)"
+        )
+
     # Patch 1: reveal strictly-future cells on the model-level causal mask (global
     # layers + the base mask sliding layers receive).
     install_gqa_anneal_patch(model, state)
 
     # Patch 2: reveal the strictly-far-past on each sliding (local) decoder layer.
-    wrapped_any = False
     for layer in _iter_sliding_decoder_layers(model):
         setattr(layer, _STATE_ATTR, state)  # live state; re-install swaps it in
-        wrapped_any = True
         if hasattr(layer, _ORIG_ATTR):
             continue  # already wrapped; wrapping again would double-anneal
         orig = layer.forward  # bound original, captured before we shadow it
         setattr(layer, _ORIG_ATTR, orig)
         layer.forward = types.MethodType(_make_wrapped_forward(orig), layer)
-
-    if not wrapped_any:
-        raise ValueError(
-            "SWA anneal patch found no sliding-window decoder layers "
-            f"on {type(model).__name__!r} (not a Gemma 2/3 sliding-window model?)"
-        )

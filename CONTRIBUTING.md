@@ -6,6 +6,8 @@ Thanks for your interest. This page is the short version: how to build, test, li
 
 - [rustup](https://rustup.rs/) - the Rust toolchain is pinned by `rust-toolchain.toml` (stable + rustfmt + clippy).
 - [uv](https://docs.astral.sh/uv/) - manages the Python workspace and its single `uv.lock`.
+  torch is pinned to the CPU-only PyTorch wheel index in the root `pyproject.toml`, so `uv sync` installs the ~100MB `+cpu` build instead of the default Linux wheel and its ~3GB of NVIDIA CUDA libraries.
+  macOS wheels are unaffected (MPS still works); if you need CUDA locally, point the `torch` entry in `[tool.uv.sources]` at a CUDA index and re-lock, but don't commit that.
 
 ## The four commands
 

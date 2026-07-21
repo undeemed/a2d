@@ -17,7 +17,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       # uv is needed so the exit-criterion e2e test spawns the real worker instead
       # of silently skipping (crates/a2d-cli/tests/e2e.rs skips when uv is absent).
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - run: uv sync
       # Regenerate schema + pydantic models from the Rust source of truth; any
       # drift from the checked-in files fails the build (SPEC-HANDOFF section 3.3).
